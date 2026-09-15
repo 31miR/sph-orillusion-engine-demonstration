@@ -1,0 +1,4 @@
+struct FluidParticle {
+    position: vec4<f32>,
+    velocity: vec4<f32>,
+};

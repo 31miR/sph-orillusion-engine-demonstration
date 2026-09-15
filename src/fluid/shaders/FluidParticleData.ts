@@ -1,6 +1,1 @@
-export const FluidParticleData = /* wgsl */ `
-    struct FluidParticle {
-        position: vec4<f32>,
-        velocity: vec4<f32>,
-    };
-`;
+export { default as FluidParticleData } from "./FluidParticleData.wgsl?raw";
