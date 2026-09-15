@@ -1,9 +1,9 @@
 import { MeshRenderer, Object3D, PassType, SphereGeometry, StorageGPUBuffer } from "@orillusion/core";
 import { FluidParticleMaterial } from "./FluidParticleMaterial";
 
-// Must match the `FluidParticle` WGSL struct in shaders/FluidParticleData.ts
-// (currently just a vec4<f32> position).
-const FLOATS_PER_PARTICLE = 4;
+// Must match the `FluidParticle` WGSL struct in shaders/FluidParticleData.ts:
+// position (vec4<f32>) + velocity (vec4<f32>).
+const FLOATS_PER_PARTICLE = 8;
 
 export class FluidParticleField {
     public readonly object3D: Object3D;
@@ -22,7 +22,11 @@ export class FluidParticleField {
                     data[i++] = (x - offset) * spacing;
                     data[i++] = (y - offset) * spacing;
                     data[i++] = (z - offset) * spacing;
-                    data[i++] = 0;
+                    data[i++] = 0; // position.w (unused)
+                    data[i++] = 0; // velocity.x
+                    data[i++] = 0; // velocity.y
+                    data[i++] = 0; // velocity.z
+                    data[i++] = 0; // velocity.w (unused)
                 }
             }
         }

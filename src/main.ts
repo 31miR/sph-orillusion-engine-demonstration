@@ -1,5 +1,7 @@
 import { Engine3D, Scene3D, Camera3D, Object3D, View3D, DirectLight, Color, HoverCameraController, AtmosphericComponent } from "@orillusion/core";
 import { FluidParticleField } from "./fluid/FluidParticleField";
+import { FluidSimulator } from "./fluid/FluidSimulator";
+import { FluidSimulationComponent } from "./fluid/FluidSimulationComponent";
 
 async function init() {
     const engine = await Engine3D.init({
@@ -32,6 +34,9 @@ async function init() {
 
     const fluidParticles = new FluidParticleField();
     scene.addChild(fluidParticles.object3D);
+
+    const simulator = new FluidSimulator(fluidParticles.buffer, fluidParticles.particleCount);
+    fluidParticles.object3D.addComponent(FluidSimulationComponent, simulator);
 
     const view = new View3D();
     view.scene = scene;
