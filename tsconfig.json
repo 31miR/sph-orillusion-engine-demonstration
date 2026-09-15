@@ -11,7 +11,7 @@
     "moduleResolution": "bundler",
     "target": "esnext",
     "lib": ["esnext", "dom"],
-    "types": [],
+    "types": ["@webgpu/types"],
 
     // Other Outputs
     "sourceMap": true,
