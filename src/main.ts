@@ -1,7 +1,8 @@
-import { Engine3D, Scene3D, Camera3D, Object3D, View3D, DirectLight, Color, HoverCameraController, AtmosphericComponent } from "@orillusion/core";
+import { Engine3D, Scene3D, Camera3D, Object3D, View3D, DirectLight, Color, HoverCameraController, AtmosphericComponent, MeshRenderer, PlaneGeometry, LitMaterial } from "@orillusion/core";
 import { FluidParticleField } from "./fluid/FluidParticleField";
 import { FluidSimulator } from "./fluid/FluidSimulator";
 import { FluidSimulationComponent } from "./fluid/FluidSimulationComponent";
+import { DEFAULT_FLUID_BOUNDS } from "./fluid/FluidBounds";
 
 async function init() {
     const engine = await Engine3D.init({
@@ -32,10 +33,24 @@ async function init() {
     light.intensity = 15;
     scene.addChild(lightObj);
 
+    const bounds = DEFAULT_FLUID_BOUNDS;
+
+    const floorObj = new Object3D();
+    const floorRenderer = floorObj.addComponent(MeshRenderer);
+    const floorWidth = (bounds.max.x - bounds.min.x) * 1.5;
+    const floorDepth = (bounds.max.z - bounds.min.z) * 1.5;
+    floorRenderer.geometry = new PlaneGeometry(floorWidth, floorDepth, 1, 1);
+    floorRenderer.material = new LitMaterial();
+    floorObj.y = bounds.min.y;
+    scene.addChild(floorObj);
+
     const fluidParticles = new FluidParticleField();
     scene.addChild(fluidParticles.object3D);
 
-    const simulator = new FluidSimulator(fluidParticles.buffer, fluidParticles.particleCount);
+    const simulator = new FluidSimulator(fluidParticles.buffer, fluidParticles.particleCount, {
+        bounds,
+        particleRadius: fluidParticles.particleRadius,
+    });
     fluidParticles.object3D.addComponent(FluidSimulationComponent, simulator);
 
     const view = new View3D();

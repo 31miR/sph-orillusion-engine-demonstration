@@ -9,9 +9,11 @@ export class FluidParticleField {
     public readonly object3D: Object3D;
     public readonly buffer: StorageGPUBuffer;
     public readonly particleCount: number;
+    public readonly particleRadius: number;
 
     constructor(particlesPerAxis: number = 8, spacing: number = 0.3, particleRadius: number = 0.12) {
         this.particleCount = particlesPerAxis * particlesPerAxis * particlesPerAxis;
+        this.particleRadius = particleRadius;
 
         const data = new Float32Array(this.particleCount * FLOATS_PER_PARTICLE);
         const offset = (particlesPerAxis - 1) * 0.5;
