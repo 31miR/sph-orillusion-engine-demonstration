@@ -1,4 +1,5 @@
 import { Engine3D, Scene3D, Camera3D, Object3D, View3D, DirectLight, Color, HoverCameraController, AtmosphericComponent, MeshRenderer, PlaneGeometry, LitMaterial } from "@orillusion/core";
+import { Stats } from "@orillusion/stats";
 import { FluidParticleField } from "./fluid/FluidParticleField";
 import { FluidSimulator } from "./fluid/FluidSimulator";
 import { FluidSimulationComponent } from "./fluid/FluidSimulationComponent";
@@ -18,6 +19,7 @@ async function init() {
 
     const scene = new Scene3D();
     scene.addComponent(AtmosphericComponent);
+    scene.addComponent(Stats);
 
     const cameraObj = new Object3D();
     const camera = cameraObj.addComponent(Camera3D);
