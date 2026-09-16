@@ -19,7 +19,10 @@ async function init() {
 
     const scene = new Scene3D();
     scene.addComponent(AtmosphericComponent);
-    scene.addComponent(Stats);
+
+    const stats = scene.addComponent(Stats);
+    stats.container.style.transform = "scale(1.5)";
+    stats.container.style.transformOrigin = "top left";
 
     const cameraObj = new Object3D();
     const camera = cameraObj.addComponent(Camera3D);
