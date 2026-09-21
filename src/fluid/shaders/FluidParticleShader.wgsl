@@ -13,21 +13,28 @@ var baseMap: texture_2d<f32>;
 @group(3) @binding(0)
 var<storage, read> particles: array<FluidParticle>;
 
-// Debug visualization constants (milestone step 5: density heatmap).
-const DEBUG_REST_DENSITY: f32 = 1000.0;
-const DEBUG_OVER_DENSITY_CEILING: f32 = 2.0;
+// Debug visualization constant (milestone step 6: pressure heatmap).
+// Pressure (Eq. 9) is left unclamped and can be negative (under-dense
+// regions), so unlike a plain 0-to-max scale this is centered at zero:
+// blue = negative (tension), near-white = zero, red = positive
+// (compression). Magnitude is mapped on a log scale on either side of
+// zero, since the equation of state's 7th power gives it an enormous
+// dynamic range — a linear scale would saturate almost instantly.
+// DEBUG_PRESSURE_LOG_CEILING is the |pressure| that maps to fully
+// saturated — tune if the range looks off.
+const DEBUG_PRESSURE_LOG_CEILING: f32 = 1000000.0;
 
-fn densityHeatmapColor(density: f32) -> vec4<f32> {
-    let ratio = density / DEBUG_REST_DENSITY;
-    let under = vec3<f32>(0.15, 0.35, 1.0);
+fn pressureHeatmapColor(pressure: f32) -> vec4<f32> {
+    let cold = vec3<f32>(0.15, 0.35, 1.0);
     let neutral = vec3<f32>(0.92, 0.92, 0.88);
-    let over = vec3<f32>(1.0, 0.15, 0.1);
+    let hot = vec3<f32>(1.0, 0.1, 0.1);
+
+    let t = clamp(log(1.0 + abs(pressure)) / log(1.0 + DEBUG_PRESSURE_LOG_CEILING), 0.0, 1.0);
     var color: vec3<f32>;
-    if (ratio < 1.0) {
-        color = mix(under, neutral, clamp(ratio, 0.0, 1.0));
+    if (pressure < 0.0) {
+        color = mix(neutral, cold, t);
     } else {
-        let t = clamp((ratio - 1.0) / (DEBUG_OVER_DENSITY_CEILING - 1.0), 0.0, 1.0);
-        color = mix(neutral, over, t);
+        color = mix(neutral, hot, t);
     }
     return vec4<f32>(color, 1.0);
 }
@@ -38,8 +45,8 @@ fn vert(vertex: VertexAttributes) -> VertexOutput {
     // We position particles ourselves from the storage buffer above,
     // instead of using the engine's default per-instance model-matrix
     // lookup (models.matrix[instance_index]) — that array only has one
-    // valid entry (this Object3D's real transform), so for the other
-    // 511 instances it reads garbage GPU memory. Reset to identity.
+    // valid entry (this Object3D's real transform), so for every other
+    // instance it reads garbage GPU memory. Reset to identity.
     ORI_MATRIX_M = mat4x4<f32>(
         vec4<f32>(1.0, 0.0, 0.0, 0.0),
         vec4<f32>(0.0, 1.0, 0.0, 0.0),
@@ -52,7 +59,7 @@ fn vert(vertex: VertexAttributes) -> VertexOutput {
     var viewPos = ORI_MATRIX_V * worldPos;
     var clipPos = ORI_MATRIX_P * viewPos;
 
-    ORI_VertexOut.varying_Color = densityHeatmapColor(particle.velocity.w);
+    ORI_VertexOut.varying_Color = pressureHeatmapColor(particle.position.w);
     ORI_VertexOut.member = clipPos;
     return ORI_VertexOut;
 }

@@ -23,6 +23,12 @@ struct SimParams {
     // spaced interior particle.
     particleMass: f32,
     restDensity: f32,
+    // Stiffness constant k in the Tait-style equation of state (Eq. 9):
+    // p = k * ((rho/rho_0)^7 - 1). Larger k reduces compressibility but
+    // demands a smaller time step; not yet load-bearing until pressure
+    // actually drives a force (a later step), so treat as a placeholder
+    // pending real tuning.
+    stiffness: f32,
 };
 
 fn simCellCoord(params: SimParams, pos: vec3<f32>) -> vec3<i32> {
