@@ -49,7 +49,11 @@ async function init() {
     floorObj.y = bounds.min.y;
     scene.addChild(floorObj);
 
-    const fluidParticles = new FluidParticleField();
+    // Scaled up from the original 8^3=512 toy grid to 20^3=8000 particles,
+    // spacing/radius shrunk proportionally so the block still fits the
+    // box with room to fall and move (previously spanned 2.1 units in a
+    // +/-2 box; this spans ~2.85).
+    const fluidParticles = new FluidParticleField(20, 0.15, 0.06);
     scene.addChild(fluidParticles.object3D);
 
     const simulator = new FluidSimulator(fluidParticles.buffer, fluidParticles.particleCount, {
