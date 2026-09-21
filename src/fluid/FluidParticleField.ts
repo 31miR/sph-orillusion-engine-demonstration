@@ -10,10 +10,12 @@ export class FluidParticleField {
     public readonly buffer: StorageGPUBuffer;
     public readonly particleCount: number;
     public readonly particleRadius: number;
+    public readonly spacing: number;
 
     constructor(particlesPerAxis: number = 8, spacing: number = 0.3, particleRadius: number = 0.12) {
         this.particleCount = particlesPerAxis * particlesPerAxis * particlesPerAxis;
         this.particleRadius = particleRadius;
+        this.spacing = spacing;
 
         const data = new Float32Array(this.particleCount * FLOATS_PER_PARTICLE);
         const offset = (particlesPerAxis - 1) * 0.5;
@@ -28,7 +30,7 @@ export class FluidParticleField {
                     data[i++] = 0; // velocity.x
                     data[i++] = 0; // velocity.y
                     data[i++] = 0; // velocity.z
-                    data[i++] = 0; // velocity.w (unused)
+                    data[i++] = 0; // velocity.w (debug visualization scalar)
                 }
             }
         }

@@ -55,6 +55,7 @@ async function init() {
     const simulator = new FluidSimulator(fluidParticles.buffer, fluidParticles.particleCount, {
         bounds,
         particleRadius: fluidParticles.particleRadius,
+        smoothingLength: fluidParticles.spacing,
     });
     fluidParticles.object3D.addComponent(FluidSimulationComponent, simulator);
 

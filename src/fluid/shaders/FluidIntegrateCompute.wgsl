@@ -1,17 +1,5 @@
 #include "FluidParticleData"
-
-struct SimParams {
-    deltaTime: f32,
-    gravity: f32,
-    restitution: f32,
-    particleRadius: f32,
-    boundsMinX: f32,
-    boundsMinY: f32,
-    boundsMinZ: f32,
-    boundsMaxX: f32,
-    boundsMaxY: f32,
-    boundsMaxZ: f32,
-};
+#include "FluidSimParams"
 
 @group(0) @binding(0)
 var<uniform> params: SimParams;
