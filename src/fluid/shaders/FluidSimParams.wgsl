@@ -17,6 +17,12 @@ struct SimParams {
     gridDimX: f32,
     gridDimY: f32,
     gridDimZ: f32,
+    // particleMass = smoothingLength^3 * restDensity (Algorithm 1, STAR
+    // report). restDensity is the fluid's target rest density (rho_0);
+    // density summation (Eq. 3) should read close to this for a properly
+    // spaced interior particle.
+    particleMass: f32,
+    restDensity: f32,
 };
 
 fn simCellCoord(params: SimParams, pos: vec3<f32>) -> vec3<i32> {

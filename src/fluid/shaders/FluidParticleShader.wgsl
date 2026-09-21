@@ -13,18 +13,21 @@ var baseMap: texture_2d<f32>;
 @group(3) @binding(0)
 var<storage, read> particles: array<FluidParticle>;
 
-const DEBUG_HEATMAP_MAX: f32 = 80.0;
+// Debug visualization constants (milestone step 5: density heatmap).
+const DEBUG_REST_DENSITY: f32 = 1000.0;
+const DEBUG_OVER_DENSITY_CEILING: f32 = 2.0;
 
-fn heatmapColor(t: f32) -> vec4<f32> {
-    let clamped = clamp(t, 0.0, 1.0);
-    let cold = vec3<f32>(0.1, 0.2, 1.0);
-    let mid = vec3<f32>(1.0, 0.9, 0.1);
-    let hot = vec3<f32>(1.0, 0.1, 0.1);
+fn densityHeatmapColor(density: f32) -> vec4<f32> {
+    let ratio = density / DEBUG_REST_DENSITY;
+    let under = vec3<f32>(0.15, 0.35, 1.0);
+    let neutral = vec3<f32>(0.92, 0.92, 0.88);
+    let over = vec3<f32>(1.0, 0.15, 0.1);
     var color: vec3<f32>;
-    if (clamped < 0.5) {
-        color = mix(cold, mid, clamped * 2.0);
+    if (ratio < 1.0) {
+        color = mix(under, neutral, clamp(ratio, 0.0, 1.0));
     } else {
-        color = mix(mid, hot, (clamped - 0.5) * 2.0);
+        let t = clamp((ratio - 1.0) / (DEBUG_OVER_DENSITY_CEILING - 1.0), 0.0, 1.0);
+        color = mix(neutral, over, t);
     }
     return vec4<f32>(color, 1.0);
 }
@@ -49,7 +52,7 @@ fn vert(vertex: VertexAttributes) -> VertexOutput {
     var viewPos = ORI_MATRIX_V * worldPos;
     var clipPos = ORI_MATRIX_P * viewPos;
 
-    ORI_VertexOut.varying_Color = heatmapColor(particle.velocity.w / DEBUG_HEATMAP_MAX);
+    ORI_VertexOut.varying_Color = densityHeatmapColor(particle.velocity.w);
     ORI_VertexOut.member = clipPos;
     return ORI_VertexOut;
 }

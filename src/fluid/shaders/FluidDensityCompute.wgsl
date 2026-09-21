@@ -1,5 +1,6 @@
 #include "FluidParticleData"
 #include "FluidSimParams"
+#include "FluidKernel"
 
 @group(0) @binding(0)
 var<uniform> params: SimParams;
@@ -13,11 +14,12 @@ var<storage, read> cellHead: array<i32>;
 @group(0) @binding(3)
 var<storage, read> particleNext: array<i32>;
 
-// Debug-only pass (milestone step 4): counts *other* particles within
-// kernel support and stashes the count in the otherwise-unused
-// velocity.w slot, purely so the render shader can visualize it as a
-// heatmap and let us sanity-check the grid/neighbor search in isolation,
-// before density/pressure/force are built on top of it.
+// Density summation, Eq. 3 in the STAR report: rho_i = sum_j m_j * W_ij.
+// Unlike the earlier neighbor-count debug pass, this sum DOES include
+// j == i — the kernel's self-weight W(0, h) is a real, nonzero term in
+// the density estimate, not a degenerate case to skip. Result is stashed
+// in velocity.w (same debug slot the neighbor-count pass used), so the
+// render shader can visualize it.
 @compute @workgroup_size(64)
 fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let i = globalId.x;
@@ -26,12 +28,10 @@ fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
     }
 
     let pos = particles[i].position.xyz;
-    let supportRadius = 2.0 * params.smoothingLength;
-    let supportRadiusSq = supportRadius * supportRadius;
     let baseCoord = simCellCoord(params, pos);
     let gridDim = vec3<i32>(i32(params.gridDimX), i32(params.gridDimY), i32(params.gridDimZ));
 
-    var count = 0;
+    var density = 0.0;
     for (var dz = -1; dz <= 1; dz = dz + 1) {
         for (var dy = -1; dy <= 1; dy = dy + 1) {
             for (var dx = -1; dx <= 1; dx = dx + 1) {
@@ -42,17 +42,14 @@ fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
 
                 var j = cellHead[simCellIndex(params, neighborCoord)];
                 while (j >= 0) {
-                    if (u32(j) != i) {
-                        let diff = particles[u32(j)].position.xyz - pos;
-                        if (dot(diff, diff) < supportRadiusSq) {
-                            count = count + 1;
-                        }
-                    }
+                    let diff = particles[u32(j)].position.xyz - pos;
+                    let r = length(diff);
+                    density = density + params.particleMass * cubicSplineWeight(r, params.smoothingLength);
                     j = particleNext[u32(j)];
                 }
             }
         }
     }
 
-    particles[i].velocity.w = f32(count);
+    particles[i].velocity.w = density;
 }
