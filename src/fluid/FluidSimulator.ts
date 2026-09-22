@@ -48,7 +48,7 @@ function workgroupsFor(count: number): number {
 
 export class FluidSimulator {
     private readonly params: UniformGPUBuffer;
-    private readonly maxDeltaTime: number;
+    private maxDeltaTime: number;
 
     private readonly gridClearShader: ComputeShader;
     private readonly gridBuildShader: ComputeShader;
@@ -164,6 +164,40 @@ export class FluidSimulator {
         this.integrateShader.setUniformBuffer("params", this.params);
         this.integrateShader.setStorageBuffer("particles", particleBuffer);
         this.integrateShader.workerSizeX = workgroupsFor(particleCount);
+    }
+
+    // Live-tunable parameters, for a debug GUI. Each just updates the
+    // CPU-side uniform value — no immediate upload needed, since
+    // compute() already re-applies the whole buffer every frame anyway.
+    // Note: changing restDensity does NOT retroactively resize
+    // particleMass (fixed at construction from the *original*
+    // restDensity) — it only shifts what density the pressure equation
+    // of state (Eq. 9) treats as "correct", independent of how much mass
+    // each particle actually represents. That's an intentional
+    // simplification for interactive tuning, not a physical inconsistency
+    // to fix.
+    public setGravity(value: number): void {
+        this.params.setFloat("gravity", value);
+    }
+
+    public setRestitution(value: number): void {
+        this.params.setFloat("restitution", value);
+    }
+
+    public setRestDensity(value: number): void {
+        this.params.setFloat("restDensity", value);
+    }
+
+    public setStiffness(value: number): void {
+        this.params.setFloat("stiffness", value);
+    }
+
+    public setViscosity(value: number): void {
+        this.params.setFloat("viscosity", value);
+    }
+
+    public setMaxDeltaTime(value: number): void {
+        this.maxDeltaTime = value;
     }
 
     public compute(view: View3D, command: GPUCommandEncoder) {
