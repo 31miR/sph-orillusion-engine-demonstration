@@ -20,3 +20,27 @@ fn cubicSplineWeight(r: f32, h: f32) -> f32 {
     }
     return sigma * f;
 }
+
+// Radial derivative dW/dr of the cubic spline kernel — the piece needed
+// to build the actual gradient vector: grad_i W_ij = (dW/dr) * (x_i-x_j)/r.
+// Negative for r > 0 since the kernel decreases with distance; exactly
+// 0 at r = 0 (the polynomial's slope vanishes at the center), so the
+// gradient is well-behaved (no singularity) even for near-coincident
+// particles — the caller still needs to guard the r=0 case separately
+// since (x_i-x_j)/r is undefined there regardless of dW/dr being 0.
+fn cubicSplineDerivative(r: f32, h: f32) -> f32 {
+    let q = r / h;
+    if (q >= 2.0) {
+        return 0.0;
+    }
+
+    let sigma = 3.0 / (2.0 * PI * h * h * h);
+    var df: f32;
+    if (q < 1.0) {
+        df = -2.0 * q + 1.5 * q * q;
+    } else {
+        let t = 2.0 - q;
+        df = -0.5 * t * t;
+    }
+    return (sigma / h) * df;
+}
