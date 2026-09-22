@@ -5,6 +5,7 @@ import { FluidParticleField } from "./fluid/FluidParticleField";
 import { FluidSimulator } from "./fluid/FluidSimulator";
 import { FluidSimulationComponent } from "./fluid/FluidSimulationComponent";
 import { DEFAULT_FLUID_BOUNDS } from "./fluid/FluidBounds";
+import { FluidDepthPass } from "./fluid/FluidDepthPass";
 
 async function init() {
     const engine = await Engine3D.init({
@@ -96,6 +97,14 @@ async function init() {
     view.camera = camera;
 
     engine.startRenderView(view);
+
+    // Milestone: screen-space fluid rendering, step 1 — render fluid
+    // particles into an isolated off-screen depth target. Nothing
+    // reads FluidDepthRT yet, so this should be a no-op on what's
+    // visible on screen; it only proves the pass builds and runs
+    // without WebGPU validation errors. Visualizing the depth itself
+    // is the next step.
+    view.renderGraph!.add(FluidDepthPass);
 }
 
 init();

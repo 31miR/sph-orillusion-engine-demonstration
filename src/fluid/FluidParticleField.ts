@@ -1,5 +1,6 @@
 import { MeshRenderer, Object3D, PassType, SphereGeometry, StorageGPUBuffer } from "@orillusion/core";
 import { FluidParticleMaterial } from "./FluidParticleMaterial";
+import { FLUID_LAYER } from "./FluidLayers";
 
 // Must match the `FluidParticle` WGSL struct in shaders/FluidParticleData.ts:
 // position (vec4<f32>) + velocity (vec4<f32>).
@@ -44,6 +45,11 @@ export class FluidParticleField {
         mr.geometry = new SphereGeometry(particleRadius, 8, 6);
         mr.material = new FluidParticleMaterial();
         mr.instanceCount = this.particleCount;
+        // Dedicated layer bit so FluidDepthPass can render just the
+        // particles into an isolated depth target — the main camera's
+        // cullingMask is VisibleLayer.All by default, so this doesn't
+        // change normal on-screen rendering.
+        mr.visibleLayer = FLUID_LAYER;
 
         mr.material.getPass(PassType.COLOR)[0]!.setStorageBuffer("particles", this.buffer);
     }
