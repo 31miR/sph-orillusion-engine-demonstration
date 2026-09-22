@@ -8,6 +8,7 @@ import { FluidGridBuild } from "./shaders/FluidGridBuild";
 import { FluidDensityCompute } from "./shaders/FluidDensityCompute";
 import { FluidPressureCompute } from "./shaders/FluidPressureCompute";
 import { FluidPressureForceCompute } from "./shaders/FluidPressureForceCompute";
+import { FluidViscosityForceCompute } from "./shaders/FluidViscosityForceCompute";
 import type { FluidBounds } from "./FluidBounds";
 
 const WORKGROUP_SIZE = 64;
@@ -30,6 +31,12 @@ export interface FluidSimulatorOptions {
     // default is a conservative starting point, expect it (and possibly
     // maxDeltaTime) to need real tuning once tested.
     stiffness?: number;
+    // Kinematic viscosity nu (Eq. 8). Larger values damp jitter/noise
+    // between neighboring particles more aggressively; the STAR report
+    // notes real water's physical value is far too small to be useful
+    // for SPH stability, so larger user-tuned values are standard —
+    // treat as tunable, not physically literal.
+    viscosity?: number;
     maxDeltaTime?: number;
     gravity?: number;
     restitution?: number;
@@ -48,6 +55,7 @@ export class FluidSimulator {
     private readonly densityShader: ComputeShader;
     private readonly pressureShader: ComputeShader;
     private readonly pressureForceShader: ComputeShader;
+    private readonly viscosityForceShader: ComputeShader;
     private readonly integrateShader: ComputeShader;
 
     constructor(particleBuffer: StorageGPUBuffer, particleCount: number, options: FluidSimulatorOptions) {
@@ -57,6 +65,7 @@ export class FluidSimulator {
             smoothingLength,
             restDensity = 1000,
             stiffness = 20,
+            viscosity = 0.1,
             maxDeltaTime = 1 / 30,
             gravity = 9.8,
             restitution = 0.4,
@@ -79,9 +88,10 @@ export class FluidSimulator {
         ShaderLib.register("FluidDensityCompute", FluidDensityCompute);
         ShaderLib.register("FluidPressureCompute", FluidPressureCompute);
         ShaderLib.register("FluidPressureForceCompute", FluidPressureForceCompute);
+        ShaderLib.register("FluidViscosityForceCompute", FluidViscosityForceCompute);
 
-        // SimParams: 18 plain f32 fields, 72 bytes — see FluidSimParams.wgsl.
-        this.params = new UniformGPUBuffer(72);
+        // SimParams: 19 plain f32 fields, 76 bytes — see FluidSimParams.wgsl.
+        this.params = new UniformGPUBuffer(76);
         this.params.setFloat("deltaTime", 0); // overwritten every frame in compute()
         this.params.setFloat("gravity", gravity);
         this.params.setFloat("restitution", restitution);
@@ -100,6 +110,7 @@ export class FluidSimulator {
         this.params.setFloat("particleMass", particleMass);
         this.params.setFloat("restDensity", restDensity);
         this.params.setFloat("stiffness", stiffness);
+        this.params.setFloat("viscosity", viscosity);
         this.params.apply();
 
         // Grid buffers: cellHead[cell] is the index of the last particle
@@ -142,6 +153,13 @@ export class FluidSimulator {
         this.pressureForceShader.setStorageBuffer("particleNext", particleNextBuffer);
         this.pressureForceShader.workerSizeX = workgroupsFor(particleCount);
 
+        this.viscosityForceShader = new ComputeShader(FluidViscosityForceCompute);
+        this.viscosityForceShader.setUniformBuffer("params", this.params);
+        this.viscosityForceShader.setStorageBuffer("particles", particleBuffer);
+        this.viscosityForceShader.setStorageBuffer("cellHead", cellHeadBuffer);
+        this.viscosityForceShader.setStorageBuffer("particleNext", particleNextBuffer);
+        this.viscosityForceShader.workerSizeX = workgroupsFor(particleCount);
+
         this.integrateShader = new ComputeShader(FluidIntegrateCompute);
         this.integrateShader.setUniformBuffer("params", this.params);
         this.integrateShader.setStorageBuffer("particles", particleBuffer);
@@ -158,16 +176,19 @@ export class FluidSimulator {
 
         // Order matters throughout: grid cleared before built, built
         // before queried, density before pressure (Eq. 9 needs it), and
-        // pressure before the force pass (which needs every particle's
-        // pressure, not just its own). Matches Algorithm 1's order in
-        // the STAR report — neighbors, density, pressure, force,
-        // integrate.
+        // pressure before the pressure-force pass (which needs every
+        // particle's pressure, not just its own). Viscosity force can
+        // run either side of pressure force — both just accumulate
+        // independently into velocity — as long as both finish before
+        // integrate. Matches Algorithm 1's order in the STAR report:
+        // neighbors, density, pressure, forces, integrate.
         view.engine3D.context3D.gpuContext.computeCommand(command, [
             this.gridClearShader,
             this.gridBuildShader,
             this.densityShader,
             this.pressureShader,
             this.pressureForceShader,
+            this.viscosityForceShader,
             this.integrateShader,
         ]);
     }

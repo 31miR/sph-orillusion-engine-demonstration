@@ -25,10 +25,13 @@ struct SimParams {
     restDensity: f32,
     // Stiffness constant k in the Tait-style equation of state (Eq. 9):
     // p = k * ((rho/rho_0)^7 - 1). Larger k reduces compressibility but
-    // demands a smaller time step; not yet load-bearing until pressure
-    // actually drives a force (a later step), so treat as a placeholder
-    // pending real tuning.
+    // demands a smaller time step (drives the pressure force — tune with
+    // care, see FluidPressureForceCompute.wgsl).
     stiffness: f32,
+    // Kinematic viscosity nu (Eq. 8's Laplacian, scaled). Real water is
+    // ~1e-6 m^2/s, but the STAR report notes larger user-defined values
+    // are typically preferred for SPH stability — treat as tunable.
+    viscosity: f32,
 };
 
 fn simCellCoord(params: SimParams, pos: vec3<f32>) -> vec3<i32> {
