@@ -1,11 +1,11 @@
-import { Engine3D, Scene3D, Camera3D, Object3D, View3D, DirectLight, Color, HoverCameraController, AtmosphericComponent, MeshRenderer, PlaneGeometry, LitMaterial } from "@orillusion/core";
+import { Engine3D, Scene3D, Camera3D, Object3D, View3D, DirectLight, Color, HoverCameraController, AtmosphericComponent, MeshRenderer, PlaneGeometry, LitMaterial, SceneCaptureCameraComponent } from "@orillusion/core";
 import { Stats } from "@orillusion/stats";
 import * as dat from "dat.gui";
-import { FluidParticleField } from "./fluid/FluidParticleField";
+import { FluidParticleField, FLUID_DEPTH_CAPTURE_MASK } from "./fluid/FluidParticleField";
 import { FluidSimulator } from "./fluid/FluidSimulator";
 import { FluidSimulationComponent } from "./fluid/FluidSimulationComponent";
 import { DEFAULT_FLUID_BOUNDS } from "./fluid/FluidBounds";
-import { FluidDepthPass } from "./fluid/FluidDepthPass";
+import { FluidDepthSmoothPass } from "./fluid/FluidDepthSmoothPass";
 
 async function init() {
     const engine = await Engine3D.init({
@@ -34,6 +34,19 @@ async function init() {
     controller.setCamera(45, -30, 6);
     scene.addChild(cameraObj);
 
+    // Captures only the depth-capture echo (FLUID_DEPTH_CAPTURE_MASK)
+    // from the same viewpoint as the main camera, into its own
+    // texture, for FluidDepthSmoothPass to read — see
+    // FluidParticleField/FluidDepthCaptureMaterial for why this exists
+    // instead of reading the hardware depth buffer directly.
+    const depthCapture = cameraObj.addComponent(SceneCaptureCameraComponent);
+    depthCapture.width = window.innerWidth;
+    depthCapture.height = window.innerHeight;
+    depthCapture.captureMask = FLUID_DEPTH_CAPTURE_MASK;
+    depthCapture.includeSky = false;
+    depthCapture.includeTransparent = false;
+    depthCapture.clearColor = new Color(0, 0, 0, 0);
+
     const lightObj = new Object3D();
     const light = lightObj.addComponent(DirectLight);
     light.lightColor = new Color(1.0, 1.0, 1.0, 1.0);
@@ -57,6 +70,7 @@ async function init() {
     // +/-2 box; this spans ~2.85).
     const fluidParticles = new FluidParticleField(20, 0.15, 0.06);
     scene.addChild(fluidParticles.object3D);
+    scene.addChild(fluidParticles.depthCaptureObject3D);
 
     // Explicit values (not FluidSimulator's internal defaults) so the GUI
     // below is seeded with exactly what's actually running, not a value
@@ -98,13 +112,12 @@ async function init() {
 
     engine.startRenderView(view);
 
-    // Milestone: screen-space fluid rendering, step 1 — render fluid
-    // particles into an isolated off-screen depth target. Nothing
-    // reads FluidDepthRT yet, so this should be a no-op on what's
-    // visible on screen; it only proves the pass builds and runs
-    // without WebGPU validation errors. Visualizing the depth itself
-    // is the next step.
-    view.renderGraph!.add(FluidDepthPass);
+    // Milestone: screen-space fluid rendering, step 2 — smooth the
+    // depth-capture component's captured distances. Nothing reads the
+    // smoothed output yet, so this should be a no-op on what's visible
+    // on screen; it only proves the pass builds and runs without
+    // WebGPU validation errors. Visualizing it is the next step.
+    view.renderGraph!.add(FluidDepthSmoothPass, depthCapture);
 }
 
 init();
