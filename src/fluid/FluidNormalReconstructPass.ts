@@ -61,8 +61,11 @@ export class FluidNormalReconstructPass extends RenderGraphPass {
         const view = ctx.view;
         const depthTexture = this.smoothPass.smoothedDepthTexture;
 
-        const projMatInv = new Float32Array(view.camera.projectionMatrixInv.rawData);
-        this.params.setFloat32Array("projMatInv", projMatInv);
+        // setMatrix, not setFloat32Array — the field is declared
+        // `mat4x4<f32>` in the shader, and there's a dedicated method
+        // for exactly that on GPUBufferBase; setFloat32Array doesn't
+        // reliably map onto a matrix-typed struct field.
+        this.params.setMatrix("projMatInv", view.camera.projectionMatrixInv);
         this.params.apply();
 
         this.normalShader.setSamplerTexture("depthTex", depthTexture);

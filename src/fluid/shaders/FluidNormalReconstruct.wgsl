@@ -41,21 +41,7 @@ fn reconstructViewPos(linearDepth: f32, texUV: vec2<f32>) -> vec3<f32> {
     return viewRay * (linearDepth / viewRay.z);
 }
 
-@compute @workgroup_size(8, 8)
-fn CsMain(@builtin(global_invocation_id) id: vec3<u32>) {
-    let sizeU = textureDimensions(depthTex);
-    let size = vec2<i32>(sizeU);
-    if (id.x >= sizeU.x || id.y >= sizeU.y) {
-        return;
-    }
-    let coord = vec2<i32>(id.xy);
-    let centerDepth = textureLoad(depthTex, coord, 0).r;
-
-    if (centerDepth <= 0.0) {
-        textureStore(outTex, coord, vec4<f32>(0.0, 0.0, 0.0, 0.0));
-        return;
-    }
-
+fn computeNormal(coord: vec2<i32>, size: vec2<i32>, centerDepth: f32) -> vec4<f32> {
     let leftDepth = sampleDepth(coord - vec2<i32>(1, 0), size);
     let rightDepth = sampleDepth(coord + vec2<i32>(1, 0), size);
     let upDepth = sampleDepth(coord - vec2<i32>(0, 1), size);
@@ -82,8 +68,7 @@ fn CsMain(@builtin(global_invocation_id) id: vec3<u32>) {
         // An isolated pixel with no valid neighbor on one axis (e.g. a
         // single-pixel sliver) — face the camera rather than produce a
         // garbage normal from a background neighbor.
-        textureStore(outTex, coord, vec4<f32>(0.5, 0.5, 1.0, 1.0));
-        return;
+        return vec4<f32>(0.5, 0.5, 1.0, 1.0);
     }
 
     let sizeF = vec2<f32>(size);
@@ -109,5 +94,23 @@ fn CsMain(@builtin(global_invocation_id) id: vec3<u32>) {
 
     // Stored in the conventional [0,1]-remapped "normal map" encoding;
     // the shading step unpacks with * 2.0 - 1.0.
-    textureStore(outTex, coord, vec4<f32>(normal * 0.5 + 0.5, 1.0));
+    return vec4<f32>(normal * 0.5 + 0.5, 1.0);
+}
+
+@compute @workgroup_size(8, 8)
+fn CsMain(@builtin(global_invocation_id) id: vec3<u32>) {
+    let sizeU = textureDimensions(depthTex);
+    let size = vec2<i32>(sizeU);
+    if (id.x >= sizeU.x || id.y >= sizeU.y) {
+        return;
+    }
+    let coord = vec2<i32>(id.xy);
+    let centerDepth = textureLoad(depthTex, coord, 0).r;
+
+    if (centerDepth <= 0.0) {
+        textureStore(outTex, coord, vec4<f32>(0.0, 0.0, 0.0, 0.0));
+        return;
+    }
+
+    textureStore(outTex, coord, computeNormal(coord, size, centerDepth));
 }
