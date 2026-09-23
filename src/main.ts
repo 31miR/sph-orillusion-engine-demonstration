@@ -6,6 +6,7 @@ import { FluidSimulator } from "./fluid/FluidSimulator";
 import { FluidSimulationComponent } from "./fluid/FluidSimulationComponent";
 import { DEFAULT_FLUID_BOUNDS } from "./fluid/FluidBounds";
 import { FluidDepthSmoothPass } from "./fluid/FluidDepthSmoothPass";
+import { FluidNormalReconstructPass } from "./fluid/FluidNormalReconstructPass";
 
 async function init() {
     const engine = await Engine3D.init({
@@ -112,12 +113,15 @@ async function init() {
 
     engine.startRenderView(view);
 
-    // Milestone: screen-space fluid rendering, step 2 — smooth the
-    // depth-capture component's captured distances. Nothing reads the
-    // smoothed output yet, so this should be a no-op on what's visible
-    // on screen; it only proves the pass builds and runs without
-    // WebGPU validation errors. Visualizing it is the next step.
-    view.renderGraph!.add(FluidDepthSmoothPass, depthCapture);
+    // Milestone: screen-space fluid rendering, steps 2-3 — smooth the
+    // depth-capture component's captured distances, then reconstruct a
+    // surface normal per pixel from the smoothed result. Nothing reads
+    // the reconstructed normals yet, so this should still be a no-op
+    // on what's visible on screen; it only proves both passes build
+    // and run without WebGPU validation errors. Shading + compositing
+    // onto the visible scene is the next step.
+    const smoothPass = view.renderGraph!.add(FluidDepthSmoothPass, depthCapture);
+    view.renderGraph!.add(FluidNormalReconstructPass, smoothPass);
 }
 
 init();

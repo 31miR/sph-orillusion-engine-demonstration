@@ -32,6 +32,15 @@ export class FluidDepthSmoothPass extends RenderGraphPass {
         this.captureComponent = captureComponent;
     }
 
+    // this.outputTexture is created in setup(), but setup() across
+    // different passes can run in any order within the same compile —
+    // consumers (FluidNormalReconstructPass) should read this from
+    // their own execute(), which always runs after every pass's
+    // setup() has completed, not from their own setup().
+    get smoothedDepthTexture(): RenderTexture {
+        return this.outputTexture;
+    }
+
     setup(b: RenderGraphBuilder): void {
         b.dependsOn("SceneCapturePass");
 
