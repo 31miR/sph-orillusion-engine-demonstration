@@ -40,7 +40,12 @@ export class FluidShadeCompositePost extends PostBase {
         // NOTE: this runs synchronously inside addPost() itself, before
         // main.ts gets the returned instance back to call configure()
         // on — so this.smoothPass/normalPass aren't set yet here.
-        this.renderTexture = this.createRTTexture("FluidShadeComposite", window.innerWidth, window.innerHeight, "rgba16float");
+        //
+        // Sized from presentationSize, not window.innerWidth/Height —
+        // see the matching comment in FluidDepthSmoothPass.ts for why
+        // those two differ on any HiDPI display (e.g. a MacBook).
+        const [presentationWidth, presentationHeight] = this._boundCtx!.presentationSize;
+        this.renderTexture = this.createRTTexture("FluidShadeComposite", presentationWidth!, presentationHeight!, "rgba16float");
         this.postQuad = this.createViewQuad("fluidShadeComposite", "FluidShadeCompositeShader", this.renderTexture);
 
         // Bind SOME valid texture immediately, same reason QuadShader's
@@ -61,7 +66,8 @@ export class FluidShadeCompositePost extends PostBase {
     }
 
     onResize(): void {
-        this.renderTexture.resize(window.innerWidth, window.innerHeight);
+        const [presentationWidth, presentationHeight] = this._boundCtx!.presentationSize;
+        this.renderTexture.resize(presentationWidth!, presentationHeight!);
     }
 
     private updateInputTextures(): void {

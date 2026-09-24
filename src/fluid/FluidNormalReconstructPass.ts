@@ -29,9 +29,14 @@ export class FluidNormalReconstructPass extends RenderGraphPass {
         b.dependsOn("FluidDepthSmoothPass");
 
         const ctx = b.context3D;
+        // Sized from ctx.presentationSize, not window.innerWidth/Height
+        // — see the matching comment in FluidDepthSmoothPass.ts for why
+        // those two differ on any HiDPI display.
+        const presentationWidth = ctx.presentationSize[0]!;
+        const presentationHeight = ctx.presentationSize[1]!;
         this.outputTexture = new RenderTexture(
-            window.innerWidth,
-            window.innerHeight,
+            presentationWidth,
+            presentationHeight,
             "rgba16float",
             false,
             GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,

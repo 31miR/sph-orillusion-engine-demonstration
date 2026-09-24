@@ -61,9 +61,21 @@ export class FluidDepthSmoothPass extends RenderGraphPass {
         // (confirmed by the browser's own WebGPU validation error).
         // Constructing RenderTexture directly exposes the usage flags
         // so we can ask for STORAGE_BINDING explicitly.
+        //
+        // Sized from ctx.presentationSize, NOT window.innerWidth/Height:
+        // the engine's real canvas resolution is
+        // canvas.clientWidth * devicePixelRatio (see updateSize() in
+        // orillusion.es.max.js), which only equals window.innerWidth
+        // when devicePixelRatio is 1 — true on most Windows displays,
+        // false on any Retina/HiDPI screen (e.g. a MacBook), where this
+        // texture would otherwise end up a fraction of the size of
+        // FluidDepthPass's actual capture (which defaults to
+        // presentationSize), silently dropping most of its writes.
+        const presentationWidth = ctx.presentationSize[0]!;
+        const presentationHeight = ctx.presentationSize[1]!;
         const texture = new RenderTexture(
-            window.innerWidth,
-            window.innerHeight,
+            presentationWidth,
+            presentationHeight,
             "r32float",
             false,
             GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
