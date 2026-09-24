@@ -59,7 +59,8 @@ const WATER_TINT_STRENGTH: f32 = 0.35;
 
 fn shadeSurface(coord: vec2<i32>, flippedUV: vec2<f32>) -> vec3<f32> {
     let packedNormal = textureLoad(normalTex, coord, 0).xyz;
-    let normal = normalize(packedNormal * 2.0 - 1.0);
+    let normal_needs_flip = normalize(packedNormal * 2.0 - 1.0);
+    let normal = normal_needs_flip * vec3<f32>(1.0, -1.0, 1.0);
     let lightDir = normalize(LIGHT_DIR_VIEW);
     let viewDir = vec3<f32>(0.0, 0.0, 1.0);
 
@@ -71,8 +72,16 @@ fn shadeSurface(coord: vec2<i32>, flippedUV: vec2<f32>) -> vec3<f32> {
     // Bend the background sample by the surface's tilt (normal.xy) —
     // the same idea a real refraction ray follows, just without
     // actually tracing one. A flat surface (normal.xy = 0) samples
-    // straight through with no distortion.
-    let refractedUV = clamp(flippedUV + normal.xy * REFRACTION_STRENGTH, vec2<f32>(0.0), vec2<f32>(1.0));
+    // straight through with no distortion. Subtracted, not added: by
+    // Snell's law (bending toward the normal on entering the denser
+    // medium), a downward-traveling ray bends *opposite* the
+    // direction the normal tilts, not the same way — confirmed against
+    // the standard vector refraction formula, and against the classic
+    // pencil-in-a-glass-of-water photo (the side where the glass's
+    // outward normal points away from center is the side the pencil
+    // appears displaced toward, matching a ray that bent toward the
+    // center to get there).
+    let refractedUV = clamp(flippedUV - normal.xy * REFRACTION_STRENGTH, vec2<f32>(0.0), vec2<f32>(1.0));
     // textureSampleLevel, not textureSample: this runs inside
     // shadeSurface(), which main() only calls for pixels where
     // depth > 0 — non-uniform control flow (only some pixels take that

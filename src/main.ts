@@ -47,8 +47,8 @@ async function init() {
 
     const floorObj = new Object3D();
     const floorRenderer = floorObj.addComponent(MeshRenderer);
-    const floorWidth = (bounds.max.x - bounds.min.x) * 1.5;
-    const floorDepth = (bounds.max.z - bounds.min.z) * 1.5;
+    const floorWidth = bounds.max.x - bounds.min.x;
+    const floorDepth = bounds.max.z - bounds.min.z;
     floorRenderer.geometry = new PlaneGeometry(floorWidth, floorDepth, 1, 1);
     floorRenderer.material = new LitMaterial();
     floorObj.y = bounds.min.y;
