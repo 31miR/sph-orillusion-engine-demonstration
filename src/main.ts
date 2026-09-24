@@ -16,10 +16,8 @@ const FLUID_BLOCK_SPAN = 2.85;
 // depth-capture splat overlap — kept constant so denser configurations
 // don't also change the particles' relative size.
 const RADIUS_TO_SPACING_RATIO = 0.4;
-// Purely a performance cap now (more particles = more simulation +
-// rendering cost) — not a correctness one, unlike the old fixed-spacing
-// version of this file.
-const MAX_PARTICLES_PER_AXIS = 40;
+// Performance cap, not a correctness one.
+const MAX_PARTICLES_PER_AXIS = 100;
 
 interface StartConfig {
     particlesPerAxis: number;
