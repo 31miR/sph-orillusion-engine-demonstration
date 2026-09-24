@@ -16,16 +16,10 @@ var<storage, read_write> maxVelocityBits: array<atomic<u32>>;
 // that needs a CFL-safe step size (STAR report, p.3): pressure force,
 // viscosity force, and integrate.
 //
-// CsClear must run before CsReduce each frame (see FluidSimulator.ts) —
-// otherwise this value could only ever grow, never reflect the fluid
-// calming back down.
-@compute @workgroup_size(1)
-fn CsClear(@builtin(global_invocation_id) globalId: vec3<u32>) {
-    atomicStore(&maxVelocityBits[0], 0u);
-}
-
+// FluidMaxVelocityClear.wgsl must run before this each frame (see
+// FluidSimulator.ts).
 @compute @workgroup_size(64)
-fn CsReduce(@builtin(global_invocation_id) globalId: vec3<u32>) {
+fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let i = globalId.x;
     if (i >= arrayLength(&particles)) {
         return;

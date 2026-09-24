@@ -9,7 +9,8 @@ import { FluidDensityCompute } from "./shaders/FluidDensityCompute";
 import { FluidPressureCompute } from "./shaders/FluidPressureCompute";
 import { FluidPressureForceCompute } from "./shaders/FluidPressureForceCompute";
 import { FluidViscosityForceCompute } from "./shaders/FluidViscosityForceCompute";
-import { FluidMaxVelocityCompute } from "./shaders/FluidMaxVelocityCompute";
+import { FluidMaxVelocityClear } from "./shaders/FluidMaxVelocityClear";
+import { FluidMaxVelocityReduce } from "./shaders/FluidMaxVelocityReduce";
 import type { FluidBounds } from "./FluidBounds";
 
 const WORKGROUP_SIZE = 64;
@@ -101,7 +102,8 @@ export class FluidSimulator {
         ShaderLib.register("FluidPressureCompute", FluidPressureCompute);
         ShaderLib.register("FluidPressureForceCompute", FluidPressureForceCompute);
         ShaderLib.register("FluidViscosityForceCompute", FluidViscosityForceCompute);
-        ShaderLib.register("FluidMaxVelocityCompute", FluidMaxVelocityCompute);
+        ShaderLib.register("FluidMaxVelocityClear", FluidMaxVelocityClear);
+        ShaderLib.register("FluidMaxVelocityReduce", FluidMaxVelocityReduce);
 
         // SimParams: 19 plain f32 fields, 76 bytes — see FluidSimParams.wgsl.
         this.params = new UniformGPUBuffer(76);
@@ -135,22 +137,27 @@ export class FluidSimulator {
         const cellHeadBuffer = new StorageGPUBuffer(cellCount);
         const particleNextBuffer = new StorageGPUBuffer(particleCount);
 
-        // Single u32 slot, read via atomicMax by CsReduce and read/cleared
-        // as plain values elsewhere — see FluidMaxVelocityCompute.wgsl.
+        // Single u32 slot, read via atomicMax by the reduce shader and
+        // read/cleared as a plain value elsewhere — see
+        // FluidMaxVelocityReduce.wgsl / FluidMaxVelocityClear.wgsl.
         const maxVelocityBuffer = new StorageGPUBuffer(1);
 
-        this.maxVelocityClearShader = new ComputeShader(FluidMaxVelocityCompute);
-        this.maxVelocityClearShader.entryPoint = "CsClear";
-        // Not bound to "particles" — CsClear's compiled entry point never
-        // references it, so the engine's per-entry-point shader
-        // reflection prunes it from that pipeline's bind group layout
-        // entirely; binding it anyway produces a "binding index not
-        // present in the bind group layout" validation error.
+        // Separate files, not two entry points sharing one (like
+        // FluidDepthBlur.wgsl's CsMainFirst/CsMain) — the clear shader
+        // doesn't touch "particles" at all, while the reduce shader
+        // does, so the two don't have matching bindings the way
+        // FluidDepthBlur's two entry points do. Sharing one file here
+        // produced a benign-but-real inconsistency: the engine's
+        // module-level "is every declared buffer bound?" check expects
+        // particles for both entry points (since it's declared once,
+        // at module scope), but WebGPU's actual per-entry-point
+        // pipeline layout for CsClear excludes it — so satisfying one
+        // check breaks the other.
+        this.maxVelocityClearShader = new ComputeShader(FluidMaxVelocityClear);
         this.maxVelocityClearShader.setStorageBuffer("maxVelocityBits", maxVelocityBuffer);
         this.maxVelocityClearShader.workerSizeX = 1;
 
-        this.maxVelocityReduceShader = new ComputeShader(FluidMaxVelocityCompute);
-        this.maxVelocityReduceShader.entryPoint = "CsReduce";
+        this.maxVelocityReduceShader = new ComputeShader(FluidMaxVelocityReduce);
         this.maxVelocityReduceShader.setStorageBuffer("particles", particleBuffer);
         this.maxVelocityReduceShader.setStorageBuffer("maxVelocityBits", maxVelocityBuffer);
         this.maxVelocityReduceShader.workerSizeX = workgroupsFor(particleCount);
