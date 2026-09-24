@@ -66,13 +66,18 @@ export class FluidSimulator {
             restDensity = 1000,
             stiffness = 20,
             viscosity = 0.1,
-            // 1/60 rather than the old 1/30: empirically, real per-frame
-            // time comfortably under this was stable; instability
-            // specifically showed up once dt approached and exceeded it.
-            // Below the framerate this implies, the simulation now runs
-            // in slow motion (falls behind real time) rather than taking
-            // a bigger, riskier step.
-            maxDeltaTime = 1 / 60,
+            // 1/60 turned out not to be safe: forcing the display down to
+            // 144Hz (dt ~0.0069s) was enough to destabilize the
+            // simulation, well above the 60fps threshold that value was
+            // originally (imprecisely) calibrated from. 1/200 (0.005s)
+            // has real margin below that measurement, and is close to
+            // the CFL condition's own estimate (STAR report, p.3:
+            // dt <= 0.4 * particleDiameter / v_max) for a modest ~10 m/s
+            // velocity estimate, which independently suggested ~0.00288s.
+            // Below the framerate this implies, the simulation runs in
+            // slow motion (falls behind real time) rather than taking a
+            // bigger, riskier step.
+            maxDeltaTime = 1 / 200,
             gravity = 9.8,
             restitution = 0.4,
         } = options;
