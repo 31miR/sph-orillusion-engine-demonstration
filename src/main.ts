@@ -10,7 +10,33 @@ import { FluidDepthSmoothPass } from "./fluid/FluidDepthSmoothPass";
 import { FluidNormalReconstructPass } from "./fluid/FluidNormalReconstructPass";
 import { FluidShadeCompositePost } from "./fluid/FluidShadeCompositePost";
 
+
+const FLUID_BLOCK_SPAN = 2.85;
+// Same particleRadius:spacing ratio established when first tuning the
+// depth-capture splat overlap — kept constant so denser configurations
+// don't also change the particles' relative size.
+const RADIUS_TO_SPACING_RATIO = 0.4;
+// Purely a performance cap now (more particles = more simulation +
+// rendering cost) — not a correctness one, unlike the old fixed-spacing
+// version of this file.
+const MAX_PARTICLES_PER_AXIS = 40;
+
+interface StartConfig {
+    particlesPerAxis: number;
+}
+
+function askStartConfig(): Promise<StartConfig> {
+    return new Promise((resolve) => {
+        const config: StartConfig = { particlesPerAxis: 18 };
+        const gui = new dat.GUI({ name: "Setup" });
+        gui.add(config, "particlesPerAxis", 4, MAX_PARTICLES_PER_AXIS, 1).name("Particles per axis");
+        gui.add({ start: () => { gui.destroy(); resolve(config); } }, "start").name("Start");
+    });
+}
+
 async function init() {
+    const startConfig = await askStartConfig();
+
     const engine = await Engine3D.init({
         canvasConfig: {
             canvas: document.getElementById('canvas') as HTMLCanvasElement
@@ -54,11 +80,12 @@ async function init() {
     floorObj.y = bounds.min.y;
     scene.addChild(floorObj);
 
-    // 32^3=32768 particles (up from 20^3=8000) — spacing/radius shrunk
-    // proportionally (same radius:spacing ratio as before, 0.4) so the
-    // block covers roughly the same ~2.85-unit span with finer,
-    // smaller particles instead of a bigger volume.
-    const fluidParticles = new FluidParticleField(32, 0.09, 0.036);
+    // spacing/particleRadius derived from the chosen particle count so
+    // the block's overall footprint stays at FLUID_BLOCK_SPAN
+    // regardless of resolution — see the constant's own comment above.
+    const spacing = FLUID_BLOCK_SPAN / Math.max(1, startConfig.particlesPerAxis - 1);
+    const particleRadius = spacing * RADIUS_TO_SPACING_RATIO;
+    const fluidParticles = new FluidParticleField(startConfig.particlesPerAxis, spacing, particleRadius);
     scene.addChild(fluidParticles.object3D);
     scene.addChild(fluidParticles.depthCaptureObject3D);
 
@@ -98,6 +125,10 @@ async function init() {
     // first step(s), before that dynamic measurement has real data. See
     // FluidSimulator.ts's maxDeltaTime comment.
     fluidFolder.add(tunables, "maxDeltaTime", 1 / 200, 1 / 5).onChange((v: number) => simulator.setMaxDeltaTime(v));
+    // Re-uploads the original grid positions/zero velocities — see
+    // FluidParticleField.reset()'s own comment for why nothing else
+    // (neighbor grid, max-velocity buffer) needs resetting alongside it.
+    fluidFolder.add({ reset: () => fluidParticles.reset(engine.context3D.device) }, "reset").name("Reset particles");
     fluidFolder.open();
 
     const view = new View3D();

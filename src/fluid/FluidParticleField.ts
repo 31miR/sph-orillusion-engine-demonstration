@@ -31,6 +31,9 @@ export class FluidParticleField {
     public readonly particleCount: number;
     public readonly particleRadius: number;
     public readonly spacing: number;
+    // Kept around purely so reset() can re-upload it later — the exact
+    // same array the buffer was originally constructed from.
+    private readonly initialData: Float32Array;
 
     constructor(particlesPerAxis: number = 8, spacing: number = 0.3, particleRadius: number = 0.12) {
         this.particleCount = particlesPerAxis * particlesPerAxis * particlesPerAxis;
@@ -55,6 +58,7 @@ export class FluidParticleField {
             }
         }
 
+        this.initialData = data;
         this.buffer = new StorageGPUBuffer(this.particleCount * FLOATS_PER_PARTICLE, 0, data);
 
         this.object3D = new Object3D();
@@ -93,5 +97,20 @@ export class FluidParticleField {
     // spheres need to be hidden or they'd still show through/behind it.
     setSpheresVisible(visible: boolean): void {
         this.sphereRenderer.visibleLayer = visible ? VisibleLayer.Default : VisibleLayer.None;
+    }
+
+    // Re-uploads the original grid positions/zero velocities over
+    // whatever the simulation has since evolved the buffer to. Nothing
+    // else needs resetting alongside it: FluidSimulator's neighbor-search
+    // grid and max-velocity buffer both fully rebuild from this buffer's
+    // contents every single frame, so neither holds any stale state that
+    // would survive on its own.
+    reset(device: GPUDevice): void {
+        // Cast: @webgpu/types' writeBuffer wants an ArrayBufferView backed
+        // specifically by ArrayBuffer, not the broader ArrayBufferLike a
+        // plain `new Float32Array(n)` is typed as — it's always a real
+        // ArrayBuffer at runtime (never SharedArrayBuffer), just typed
+        // more loosely than this particular signature expects.
+        device.queue.writeBuffer(this.buffer.buffer, 0, this.initialData as Float32Array<ArrayBuffer>);
     }
 }

@@ -21,13 +21,15 @@ var outTex: texture_storage_2d<r32float, write>;
 const KERNEL_RADIUS: i32 = 5;
 const SIGMA_SPACE: f32 = 3.0;
 // Depth here is view-space distance-to-camera in world units (see
-// FluidDepthCaptureShader.wgsl), not normalized depth. Needs to be
-// comparable to (or larger than) the depth-capture splat radius
-// (FluidParticleField's DEPTH_CAPTURE_RADIUS_SCALE * particleRadius) —
-// that's the actual depth difference between one particle-bump's peak
-// and the valley between it and its neighbor, so a SIGMA_RANGE much
-// smaller than that rejects exactly the cross-particle blending this
-// filter exists to do, no matter how wide the spatial kernel is.
+// FluidDepthCaptureShader.wgsl), not normalized depth. Deliberately a
+// fixed constant, NOT derived from particle size: a fixed sigma stays
+// the same absolute width while particle bumps shrink as particle
+// count increases, so it becomes relatively wider compared to finer
+// particles — smaller particles end up more aggressively smoothed
+// automatically, which is the actual desired behavior (more
+// particles => smoother, not just finer). Scaling sigma down to match
+// particle size would cancel that out and keep the relative smoothing
+// the same regardless of resolution.
 const SIGMA_RANGE: f32 = 0.3;
 // A real particle's distance is always > 0 (anything at the camera
 // itself is already clipped) — 0 unambiguously means "no particle",
