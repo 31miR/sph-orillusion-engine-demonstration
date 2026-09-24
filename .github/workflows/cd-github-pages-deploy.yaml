@@ -4,6 +4,11 @@ on:
   push:
     branches: ['main']
   workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch name or commit SHA to deploy (leave empty to deploy the triggering commit)'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -20,6 +25,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - name: Log deployed ref
+        run: echo "Deploying ${{ inputs.ref || github.sha }}"
 
       - name: Setup Node
         uses: actions/setup-node@v4
