@@ -7,6 +7,9 @@ var<uniform> params: SimParams;
 @group(0) @binding(1)
 var<storage, read_write> particles: array<FluidParticle>;
 
+@group(0) @binding(2)
+var<storage, read> maxVelocityBits: array<u32>;
+
 @compute @workgroup_size(64)
 fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let i = globalId.x;
@@ -15,12 +18,13 @@ fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
     }
 
     var particle = particles[i];
+    let dt = computeDt(params.deltaTime, maxVelocityBits[0], 2.0 * params.particleRadius);
 
     // Semi-implicit (symplectic) Euler: update velocity first, then
     // use the *new* velocity to advance position (Algorithm 1 in the
     // STAR report).
-    particle.velocity.y = particle.velocity.y - params.gravity * params.deltaTime;
-    particle.position = vec4<f32>(particle.position.xyz + particle.velocity.xyz * params.deltaTime, particle.position.w);
+    particle.velocity.y = particle.velocity.y - params.gravity * dt;
+    particle.position = vec4<f32>(particle.position.xyz + particle.velocity.xyz * dt, particle.position.w);
 
     // Box boundary: clamp the particle's center so its surface doesn't
     // pass the wall, and reflect+damp the velocity component along that

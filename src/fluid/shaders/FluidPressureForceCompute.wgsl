@@ -14,6 +14,9 @@ var<storage, read> cellHead: array<i32>;
 @group(0) @binding(3)
 var<storage, read> particleNext: array<i32>;
 
+@group(0) @binding(4)
+var<storage, read> maxVelocityBits: array<u32>;
+
 // Symmetric pressure force (Eq. 6 applied to pressure), the standard
 // SPH formulation that guarantees equal-and-opposite forces between
 // every pair (Newton's third law) regardless of any density asymmetry:
@@ -71,5 +74,6 @@ fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
         }
     }
 
-    particles[i].velocity = vec4<f32>(particles[i].velocity.xyz + accel * params.deltaTime, particles[i].velocity.w);
+    let dt = computeDt(params.deltaTime, maxVelocityBits[0], 2.0 * params.particleRadius);
+    particles[i].velocity = vec4<f32>(particles[i].velocity.xyz + accel * dt, particles[i].velocity.w);
 }

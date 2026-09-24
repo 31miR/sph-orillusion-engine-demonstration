@@ -14,6 +14,9 @@ var<storage, read> cellHead: array<i32>;
 @group(0) @binding(3)
 var<storage, read> particleNext: array<i32>;
 
+@group(0) @binding(4)
+var<storage, read> maxVelocityBits: array<u32>;
+
 // Viscosity via the Laplacian estimator (Eq. 8, STAR report), applied to
 // velocity and scaled by the kinematic viscosity coefficient:
 //
@@ -72,5 +75,6 @@ fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
 
     accel = accel * 2.0 * params.viscosity;
 
-    particles[i].velocity = vec4<f32>(velI + accel * params.deltaTime, particles[i].velocity.w);
+    let dt = computeDt(params.deltaTime, maxVelocityBits[0], 2.0 * params.particleRadius);
+    particles[i].velocity = vec4<f32>(velI + accel * dt, particles[i].velocity.w);
 }

@@ -9,6 +9,7 @@ import { FluidDensityCompute } from "./shaders/FluidDensityCompute";
 import { FluidPressureCompute } from "./shaders/FluidPressureCompute";
 import { FluidPressureForceCompute } from "./shaders/FluidPressureForceCompute";
 import { FluidViscosityForceCompute } from "./shaders/FluidViscosityForceCompute";
+import { FluidMaxVelocityCompute } from "./shaders/FluidMaxVelocityCompute";
 import type { FluidBounds } from "./FluidBounds";
 
 const WORKGROUP_SIZE = 64;
@@ -50,6 +51,8 @@ export class FluidSimulator {
     private readonly params: UniformGPUBuffer;
     private maxDeltaTime: number;
 
+    private readonly maxVelocityClearShader: ComputeShader;
+    private readonly maxVelocityReduceShader: ComputeShader;
     private readonly gridClearShader: ComputeShader;
     private readonly gridBuildShader: ComputeShader;
     private readonly densityShader: ComputeShader;
@@ -66,18 +69,16 @@ export class FluidSimulator {
             restDensity = 1000,
             stiffness = 20,
             viscosity = 0.1,
-            // 1/60 turned out not to be safe: forcing the display down to
-            // 144Hz (dt ~0.0069s) was enough to destabilize the
-            // simulation, well above the 60fps threshold that value was
-            // originally (imprecisely) calibrated from. 1/200 (0.005s)
-            // has real margin below that measurement, and is close to
-            // the CFL condition's own estimate (STAR report, p.3:
-            // dt <= 0.4 * particleDiameter / v_max) for a modest ~10 m/s
-            // velocity estimate, which independently suggested ~0.00288s.
-            // Below the framerate this implies, the simulation runs in
-            // slow motion (falls behind real time) rather than taking a
-            // bigger, riskier step.
-            maxDeltaTime = 1 / 200,
+            // Now that computeDt() (FluidSimParams.wgsl) clamps every
+            // step to a live, measured max-velocity-based CFL bound,
+            // this only has one job left: bound the very first step(s),
+            // before the max-velocity reduction has ever produced real
+            // data (maxVelocity starts at 0, making computeDt's own
+            // bound huge/unclamped) — e.g. a slow shader-compile stall
+            // before the first frame. It no longer needs to be small
+            // enough to cover a fast-moving fluid itself; that's the
+            // dynamic clamp's job now.
+            maxDeltaTime = 1 / 10,
             gravity = 9.8,
             restitution = 0.4,
         } = options;
@@ -100,6 +101,7 @@ export class FluidSimulator {
         ShaderLib.register("FluidPressureCompute", FluidPressureCompute);
         ShaderLib.register("FluidPressureForceCompute", FluidPressureForceCompute);
         ShaderLib.register("FluidViscosityForceCompute", FluidViscosityForceCompute);
+        ShaderLib.register("FluidMaxVelocityCompute", FluidMaxVelocityCompute);
 
         // SimParams: 19 plain f32 fields, 76 bytes — see FluidSimParams.wgsl.
         this.params = new UniformGPUBuffer(76);
@@ -133,6 +135,26 @@ export class FluidSimulator {
         const cellHeadBuffer = new StorageGPUBuffer(cellCount);
         const particleNextBuffer = new StorageGPUBuffer(particleCount);
 
+        // Single u32 slot, read via atomicMax by CsReduce and read/cleared
+        // as plain values elsewhere — see FluidMaxVelocityCompute.wgsl.
+        const maxVelocityBuffer = new StorageGPUBuffer(1);
+
+        this.maxVelocityClearShader = new ComputeShader(FluidMaxVelocityCompute);
+        this.maxVelocityClearShader.entryPoint = "CsClear";
+        // Not bound to "particles" — CsClear's compiled entry point never
+        // references it, so the engine's per-entry-point shader
+        // reflection prunes it from that pipeline's bind group layout
+        // entirely; binding it anyway produces a "binding index not
+        // present in the bind group layout" validation error.
+        this.maxVelocityClearShader.setStorageBuffer("maxVelocityBits", maxVelocityBuffer);
+        this.maxVelocityClearShader.workerSizeX = 1;
+
+        this.maxVelocityReduceShader = new ComputeShader(FluidMaxVelocityCompute);
+        this.maxVelocityReduceShader.entryPoint = "CsReduce";
+        this.maxVelocityReduceShader.setStorageBuffer("particles", particleBuffer);
+        this.maxVelocityReduceShader.setStorageBuffer("maxVelocityBits", maxVelocityBuffer);
+        this.maxVelocityReduceShader.workerSizeX = workgroupsFor(particleCount);
+
         this.gridClearShader = new ComputeShader(FluidGridClear);
         this.gridClearShader.setUniformBuffer("params", this.params);
         this.gridClearShader.setStorageBuffer("cellHead", cellHeadBuffer);
@@ -162,6 +184,7 @@ export class FluidSimulator {
         this.pressureForceShader.setStorageBuffer("particles", particleBuffer);
         this.pressureForceShader.setStorageBuffer("cellHead", cellHeadBuffer);
         this.pressureForceShader.setStorageBuffer("particleNext", particleNextBuffer);
+        this.pressureForceShader.setStorageBuffer("maxVelocityBits", maxVelocityBuffer);
         this.pressureForceShader.workerSizeX = workgroupsFor(particleCount);
 
         this.viscosityForceShader = new ComputeShader(FluidViscosityForceCompute);
@@ -169,11 +192,13 @@ export class FluidSimulator {
         this.viscosityForceShader.setStorageBuffer("particles", particleBuffer);
         this.viscosityForceShader.setStorageBuffer("cellHead", cellHeadBuffer);
         this.viscosityForceShader.setStorageBuffer("particleNext", particleNextBuffer);
+        this.viscosityForceShader.setStorageBuffer("maxVelocityBits", maxVelocityBuffer);
         this.viscosityForceShader.workerSizeX = workgroupsFor(particleCount);
 
         this.integrateShader = new ComputeShader(FluidIntegrateCompute);
         this.integrateShader.setUniformBuffer("params", this.params);
         this.integrateShader.setStorageBuffer("particles", particleBuffer);
+        this.integrateShader.setStorageBuffer("maxVelocityBits", maxVelocityBuffer);
         this.integrateShader.workerSizeX = workgroupsFor(particleCount);
     }
 
@@ -219,15 +244,23 @@ export class FluidSimulator {
         this.params.setFloat("deltaTime", dt);
         this.params.apply();
 
-        // Order matters throughout: grid cleared before built, built
-        // before queried, density before pressure (Eq. 9 needs it), and
-        // pressure before the pressure-force pass (which needs every
-        // particle's pressure, not just its own). Viscosity force can
-        // run either side of pressure force — both just accumulate
-        // independently into velocity — as long as both finish before
-        // integrate. Matches Algorithm 1's order in the STAR report:
-        // neighbors, density, pressure, forces, integrate.
+        // Order matters throughout: the max-velocity reduction (cleared,
+        // then reduced) must finish before anything reads it — pressure
+        // force, viscosity force, and integrate all call computeDt(),
+        // which reads it (see FluidMaxVelocityCompute.wgsl and
+        // FluidSimParams.wgsl). It's reading last step's velocities,
+        // since this step's forces haven't been computed yet — a
+        // one-step-old estimate, not a bug. Then: grid cleared before
+        // built, built before queried, density before pressure (Eq. 9
+        // needs it), and pressure before the pressure-force pass (which
+        // needs every particle's pressure, not just its own). Viscosity
+        // force can run either side of pressure force — both just
+        // accumulate independently into velocity — as long as both
+        // finish before integrate. Matches Algorithm 1's order in the
+        // STAR report: neighbors, density, pressure, forces, integrate.
         view.engine3D.context3D.gpuContext.computeCommand(command, [
+            this.maxVelocityClearShader,
+            this.maxVelocityReduceShader,
             this.gridClearShader,
             this.gridBuildShader,
             this.densityShader,
