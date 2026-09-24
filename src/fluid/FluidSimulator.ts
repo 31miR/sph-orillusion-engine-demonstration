@@ -66,7 +66,13 @@ export class FluidSimulator {
             restDensity = 1000,
             stiffness = 20,
             viscosity = 0.1,
-            maxDeltaTime = 1 / 30,
+            // 1/60 rather than the old 1/30: empirically, real per-frame
+            // time comfortably under this was stable; instability
+            // specifically showed up once dt approached and exceeded it.
+            // Below the framerate this implies, the simulation now runs
+            // in slow motion (falls behind real time) rather than taking
+            // a bigger, riskier step.
+            maxDeltaTime = 1 / 60,
             gravity = 9.8,
             restitution = 0.4,
         } = options;

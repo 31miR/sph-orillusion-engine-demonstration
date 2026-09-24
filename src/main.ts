@@ -72,7 +72,7 @@ async function init() {
         restDensity: 1000,
         stiffness: 20,
         viscosity: 0.1,
-        maxDeltaTime: 1 / 30,
+        maxDeltaTime: 1 / 60,
     };
 
     const simulator = new FluidSimulator(fluidParticles.buffer, fluidParticles.particleCount, {
@@ -93,7 +93,10 @@ async function init() {
     fluidFolder.add(tunables, "restDensity", 100, 5000).onChange((v: number) => simulator.setRestDensity(v));
     fluidFolder.add(tunables, "stiffness", 0, 200).onChange((v: number) => simulator.setStiffness(v));
     fluidFolder.add(tunables, "viscosity", 0, 2).onChange((v: number) => simulator.setViscosity(v));
-    fluidFolder.add(tunables, "maxDeltaTime", 1 / 240, 1 / 10).onChange((v: number) => simulator.setMaxDeltaTime(v));
+    // Upper bound tightened from the old 1/10: that was never actually a
+    // safe single-step size, just an unenforced GUI range that let it be
+    // dragged there.
+    fluidFolder.add(tunables, "maxDeltaTime", 1 / 240, 1 / 30).onChange((v: number) => simulator.setMaxDeltaTime(v));
     fluidFolder.open();
 
     const view = new View3D();
