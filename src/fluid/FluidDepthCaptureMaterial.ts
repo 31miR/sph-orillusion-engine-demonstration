@@ -1,6 +1,6 @@
 import { Color, Context3D, Engine3D, Material, PassType, RenderShaderPass, Shader, ShaderLib, Vector4 } from "@orillusion/core";
 import { FluidParticleData } from "./shaders/FluidParticleData";
-import { FluidDepthCaptureShader } from "./shaders/FluidDepthCaptureShader";
+import { FluidDepthCaptureShader } from "./shaders/rendering/FluidDepthCaptureShader";
 
 export class FluidDepthCaptureMaterial extends Material {
     constructor(ctx?: Context3D) {

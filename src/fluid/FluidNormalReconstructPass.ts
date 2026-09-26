@@ -1,6 +1,6 @@
 import { ComputeShader, RenderGraphPass, RenderTexture, UniformGPUBuffer } from "@orillusion/core";
 import type { RenderGraphBuilder, RenderGraphPassContext } from "@orillusion/core";
-import { FluidNormalReconstruct } from "./shaders/FluidNormalReconstruct";
+import { FluidNormalReconstruct } from "./shaders/rendering/FluidNormalReconstruct";
 import { FluidDepthSmoothPass } from "./FluidDepthSmoothPass";
 
 const WORKGROUP_SIZE = 8;

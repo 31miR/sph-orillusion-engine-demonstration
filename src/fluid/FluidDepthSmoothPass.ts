@@ -1,6 +1,6 @@
 import { ComputeShader, RenderGraphPass, RenderTexture } from "@orillusion/core";
 import type { RenderGraphBuilder, RenderGraphPassContext } from "@orillusion/core";
-import { FluidDepthBlur } from "./shaders/FluidDepthBlur";
+import { FluidDepthBlur } from "./shaders/rendering/FluidDepthBlur";
 import { FluidDepthPass } from "./FluidDepthPass";
 
 const WORKGROUP_SIZE = 8;

@@ -1,5 +1,5 @@
 import { Engine3D, MAIN_DEPTH_TEXTURE, PostBase, RenderTexture, ShaderLib, UniformGPUBuffer, View3D, ViewQuad } from "@orillusion/core";
-import { FluidShadeComposite } from "./shaders/FluidShadeComposite";
+import { FluidShadeComposite } from "./shaders/rendering/FluidShadeComposite";
 import { FluidDepthSmoothPass } from "./FluidDepthSmoothPass";
 import { FluidNormalReconstructPass } from "./FluidNormalReconstructPass";
 

@@ -1,6 +1,6 @@
 import { Color, Context3D, Engine3D, Material, PassType, RenderShaderPass, Shader, ShaderLib, Vector4 } from "@orillusion/core";
 import { FluidParticleData } from "./shaders/FluidParticleData";
-import { FluidParticleShader } from "./shaders/FluidParticleShader";
+import { FluidParticleShader } from "./shaders/rendering/FluidParticleShader";
 
 export class FluidParticleMaterial extends Material {
     constructor(ctx?: Context3D) {

@@ -1,16 +1,16 @@
 import { ComputeShader, ShaderLib, StorageGPUBuffer, Time, UniformGPUBuffer, View3D } from "@orillusion/core";
 import { FluidParticleData } from "./shaders/FluidParticleData";
-import { FluidSimParams } from "./shaders/FluidSimParams";
-import { FluidKernel } from "./shaders/FluidKernel";
-import { FluidIntegrateCompute } from "./shaders/FluidIntegrateCompute";
-import { FluidGridClear } from "./shaders/FluidGridClear";
-import { FluidGridBuild } from "./shaders/FluidGridBuild";
-import { FluidDensityCompute } from "./shaders/FluidDensityCompute";
-import { FluidPressureCompute } from "./shaders/FluidPressureCompute";
-import { FluidPressureForceCompute } from "./shaders/FluidPressureForceCompute";
-import { FluidViscosityForceCompute } from "./shaders/FluidViscosityForceCompute";
-import { FluidMaxVelocityClear } from "./shaders/FluidMaxVelocityClear";
-import { FluidMaxVelocityReduce } from "./shaders/FluidMaxVelocityReduce";
+import { FluidSimParams } from "./shaders/simulation/FluidSimParams";
+import { FluidKernel } from "./shaders/simulation/FluidKernel";
+import { FluidIntegrateCompute } from "./shaders/simulation/FluidIntegrateCompute";
+import { FluidGridClear } from "./shaders/simulation/FluidGridClear";
+import { FluidGridBuild } from "./shaders/simulation/FluidGridBuild";
+import { FluidDensityCompute } from "./shaders/simulation/FluidDensityCompute";
+import { FluidPressureCompute } from "./shaders/simulation/FluidPressureCompute";
+import { FluidPressureForceCompute } from "./shaders/simulation/FluidPressureForceCompute";
+import { FluidViscosityForceCompute } from "./shaders/simulation/FluidViscosityForceCompute";
+import { FluidMaxVelocityClear } from "./shaders/simulation/FluidMaxVelocityClear";
+import { FluidMaxVelocityReduce } from "./shaders/simulation/FluidMaxVelocityReduce";
 import type { FluidBounds } from "./FluidBounds";
 
 const WORKGROUP_SIZE = 64;
