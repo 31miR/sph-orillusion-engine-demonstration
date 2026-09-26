@@ -40,6 +40,27 @@ var depthTex: texture_2d<f32>;
 @group(3) @binding(1)
 var normalTex: texture_2d<f32>;
 
+// The real scene's depth (Orillusion's built-in _MainDepthTexture),
+// used only to test occlusion — is something opaque (the floor,
+// eventually a rigid body) standing in front of the reconstructed
+// fluid surface at this pixel? Fetched informally each frame via
+// view.renderGraph.pool.get(...) in FluidShadeCompositePost.ts rather
+// than a formal RenderGraphPass b.read: this pass runs inside the
+// engine's built-in PostPass chain, whose consumers (GUIPass) had
+// their graph edges fixed at the time THEY were added — before this
+// project's own passes exist — so a later formal edge can never
+// reorder them. Running informally, at the tail of the frame like
+// every other post effect, sidesteps that entirely.
+@group(3) @binding(2)
+var sceneDepthTex: texture_depth_2d;
+
+struct ReconstructParams {
+    projMatInv: mat4x4<f32>,
+};
+
+@group(3) @binding(3)
+var<uniform> reconstructParams: ReconstructParams;
+
 struct FragmentOutput {
     @location(auto) o_Target: vec4<f32>
 };
@@ -97,6 +118,21 @@ fn shadeSurface(coord: vec2<i32>, flippedUV: vec2<f32>) -> vec3<f32> {
     return mix(transmission, SKY_TINT, fresnel);
 }
 
+// Recovers linear view-space Z (positive, increasing with distance —
+// the same convention FluidDepthCaptureShader.wgsl's own
+// "distanceToCamera" uses) from a real NDC depth sample, so it's
+// directly comparable against the fluid's own reconstructed distance.
+// Takes flippedUV — the same UV baseMap already samples with — since
+// sceneDepthTex is an ordinary rasterized render target exactly like
+// baseMap, not one of the compute-shader-populated ones (depthTex/
+// normalTex) that need no flip.
+fn linearizeSceneDepth(ndcDepth: f32, flippedUV: vec2<f32>) -> f32 {
+    let ndcXY = vec2<f32>(flippedUV.x * 2.0 - 1.0, 1.0 - flippedUV.y * 2.0);
+    let clipPos = vec4<f32>(ndcXY, ndcDepth, 1.0);
+    let viewPos = reconstructParams.projMatInv * clipPos;
+    return viewPos.z / viewPos.w;
+}
+
 @fragment
 fn main(@location(auto) fragUV: vec2<f32>) -> FragmentOutput {
     // The Y-flip below is specifically because baseMap is a previous
@@ -115,6 +151,17 @@ fn main(@location(auto) fragUV: vec2<f32>) -> FragmentOutput {
     let depth = textureLoad(depthTex, coord, 0).r;
 
     if (depth <= 0.0) {
+        return FragmentOutput(sceneColor);
+    }
+
+    let sceneSize = vec2<i32>(textureDimensions(sceneDepthTex));
+    let scenePixel = clamp(vec2<i32>(flippedUV * vec2<f32>(sceneSize)), vec2<i32>(0), sceneSize - vec2<i32>(1));
+    let sceneDepthNDC = textureLoad(sceneDepthTex, scenePixel, 0);
+    let sceneViewZ = linearizeSceneDepth(sceneDepthNDC, flippedUV);
+    if (sceneViewZ < depth) {
+        // Something opaque is nearer the camera than the reconstructed
+        // fluid surface here, so it occludes the fluid instead of the
+        // other way around.
         return FragmentOutput(sceneColor);
     }
 

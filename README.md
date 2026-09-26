@@ -74,4 +74,3 @@ counts the system becomes slow motion as the frame delta time is greater than th
 - If the framerate is too low, the fluid will look like it's lagging behind the rest of the scene when moving a camera. This is due to the
   fact that the fluid is currently rendered from a post processing function that fetches last frame. I know, that's ridiculous, needs fix.
 - Switching tabs will cause the fluid to jitter for a second.
-- Rendering an object in front of the fluid will still cause the renderer to treat it as if it was behind.

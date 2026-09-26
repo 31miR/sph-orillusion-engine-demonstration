@@ -1,4 +1,4 @@
-import { Engine3D, PostBase, RenderTexture, ShaderLib, View3D, ViewQuad } from "@orillusion/core";
+import { Engine3D, MAIN_DEPTH_TEXTURE, PostBase, RenderTexture, ShaderLib, UniformGPUBuffer, View3D, ViewQuad } from "@orillusion/core";
 import { FluidShadeComposite } from "./shaders/FluidShadeComposite";
 import { FluidDepthSmoothPass } from "./FluidDepthSmoothPass";
 import { FluidNormalReconstructPass } from "./FluidNormalReconstructPass";
@@ -25,6 +25,9 @@ export class FluidShadeCompositePost extends PostBase {
     // after addPost() returns the instance instead.
     private smoothPass!: FluidDepthSmoothPass;
     private normalPass!: FluidNormalReconstructPass;
+    // Camera's inverse projection matrix, for linearizeSceneDepth() in
+    // FluidShadeComposite.wgsl.
+    private reconstructParams!: UniformGPUBuffer;
 
     constructor() {
         super();
@@ -60,9 +63,22 @@ export class FluidShadeCompositePost extends PostBase {
         this.postQuad.quadShader.setTexture("depthTex", placeholder);
         this.postQuad.quadShader.setTexture("normalTex", placeholder);
 
+        // sceneDepthTex is texture_depth_2d in the shader, which needs
+        // a real depth-format placeholder — whiteTexture (an ordinary
+        // color texture) would mismatch the "depth" sampleType the
+        // bind group layout is reflected with, and error the same way
+        // leaving it unbound would. Replaced with the real
+        // _MainDepthTexture every frame in updateInputTextures().
+        const depthPlaceholder = new RenderTexture(1, 1, "depth32float", false, GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT, 1, 0, false, false, this._boundCtx!);
+        depthPlaceholder.textureBindingLayout.sampleType = "depth";
+        this.postQuad.quadShader.setTexture("sceneDepthTex", depthPlaceholder);
+
         // Fresnel reflectance at normal incidence — see
         // FluidShadeComposite.wgsl's materialUniform comment.
         this.postQuad.quadShader.setUniform("f0", 0.02);
+
+        this.reconstructParams = new UniformGPUBuffer(64);
+        this.postQuad.quadShader.setUniformBuffer("reconstructParams", this.reconstructParams);
     }
 
     onResize(): void {
@@ -70,13 +86,26 @@ export class FluidShadeCompositePost extends PostBase {
         this.renderTexture.resize(presentationWidth!, presentationHeight!);
     }
 
-    private updateInputTextures(): void {
+    private updateInputTextures(view: View3D): void {
         this.postQuad.quadShader.setTexture("depthTex", this.smoothPass.smoothedDepthTexture);
         this.postQuad.quadShader.setTexture("normalTex", this.normalPass.reconstructedNormalTexture);
+
+        // Fetched informally through the graph's resource pool rather
+        // than a formal RenderGraphPass b.read — see
+        // FluidShadeComposite.wgsl's sceneDepthTex comment for why a
+        // formal graph edge can't work for a pass living inside the
+        // engine's built-in PostPass chain. Safe in practice because
+        // this pass, like every post effect, runs at the tail of the
+        // frame — well after PreDepthPass has already populated it.
+        const sceneDepthTex = view.renderGraph!.pool.get<RenderTexture>(MAIN_DEPTH_TEXTURE);
+        this.postQuad.quadShader.setTexture("sceneDepthTex", sceneDepthTex);
+
+        this.reconstructParams.setMatrix("projMatInv", view.camera.projectionMatrixInv);
+        this.reconstructParams.apply();
     }
 
     render(view: View3D, command: GPUCommandEncoder): void {
-        this.updateInputTextures();
+        this.updateInputTextures(view);
         this.rtViewQuad.forEach((viewQuad) => {
             const lastTexture = this._boundCtx!.gpuContext.lastRenderPassState.getLastRenderTexture(this._boundCtx!);
             viewQuad.renderToViewQuad(view, viewQuad, command, lastTexture);
