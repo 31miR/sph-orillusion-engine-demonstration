@@ -19,25 +19,16 @@ export interface FluidSimulatorOptions {
     bounds: FluidBounds;
     particleRadius: number;
     // SPH smoothing length h. Kernel support is 2h; the neighbor-search
-    // grid's cell size is also 2h (Sec 2.1 of the STAR report). Defaults
-    // to matching the particle field's initial spacing.
+    // grid's cell size is also 2h (STAR report Sec 2.1).
     smoothingLength: number;
     // Target rest density (rho_0). Particle mass is derived from it as
-    // h^3 * restDensity (Algorithm 1, STAR report) rather than set
-    // independently. Defaults to water, 1000 kg/m^3.
+    // h^3 * restDensity (Algorithm 1, STAR report).
     restDensity?: number;
-    // Stiffness constant k in the equation of state (Eq. 9). Now
-    // load-bearing: it directly drives the pressure force. Explicit SPH
-    // with a stiff EOS can go unstable if k is too large relative to the
-    // time step (the STAR report notes this tradeoff directly) — this
-    // default is a conservative starting point, expect it (and possibly
-    // maxDeltaTime) to need real tuning once tested.
+    // Stiffness constant k in the equation of state (Eq. 9). Too large
+    // relative to the time step goes unstable (STAR report).
     stiffness?: number;
-    // Kinematic viscosity nu (Eq. 8). Larger values damp jitter/noise
-    // between neighboring particles more aggressively; the STAR report
-    // notes real water's physical value is far too small to be useful
-    // for SPH stability, so larger user-tuned values are standard —
-    // treat as tunable, not physically literal.
+    // Kinematic viscosity nu (Eq. 8) — tunable, not physically literal;
+    // real water's value is too small for SPH stability.
     viscosity?: number;
     maxDeltaTime?: number;
     gravity?: number;
@@ -70,15 +61,9 @@ export class FluidSimulator {
             restDensity = 1000,
             stiffness = 20,
             viscosity = 0.1,
-            // Now that computeDt() (FluidSimParams.wgsl) clamps every
-            // step to a live, measured max-velocity-based CFL bound,
-            // this only has one job left: bound the very first step(s),
-            // before the max-velocity reduction has ever produced real
-            // data (maxVelocity starts at 0, making computeDt's own
-            // bound huge/unclamped) — e.g. a slow shader-compile stall
-            // before the first frame. It no longer needs to be small
-            // enough to cover a fast-moving fluid itself; that's the
-            // dynamic clamp's job now.
+            // Only bounds the very first step(s), before the max-velocity
+            // reduction has real data — computeDt() (FluidSimParams.wgsl)
+            // handles the live CFL clamp from then on.
             maxDeltaTime = 1 / 10,
             gravity = 9.8,
             restitution = 0.4,
@@ -128,31 +113,20 @@ export class FluidSimulator {
         this.params.setFloat("viscosity", viscosity);
         this.params.apply();
 
-        // Grid buffers: cellHead[cell] is the index of the last particle
-        // written there this frame (or -1); particleNext[particle] chains
-        // back to whatever occupied the cell before it — a singly linked
-        // list per cell, built with one atomic exchange per particle
-        // instead of a sort. Neither needs CPU-supplied initial data since
-        // gridClear/gridBuild fully overwrite both every frame.
+        // cellHead[cell] is the last particle written there this frame
+        // (or -1); particleNext[particle] chains to whoever occupied the
+        // cell before it — a singly linked list per cell, built with one
+        // atomic exchange per particle instead of a sort.
         const cellHeadBuffer = new StorageGPUBuffer(cellCount);
         const particleNextBuffer = new StorageGPUBuffer(particleCount);
 
-        // Single u32 slot, read via atomicMax by the reduce shader and
-        // read/cleared as a plain value elsewhere — see
+        // Single u32 slot, read via atomicMax by the reduce shader — see
         // FluidMaxVelocityReduce.wgsl / FluidMaxVelocityClear.wgsl.
         const maxVelocityBuffer = new StorageGPUBuffer(1);
 
-        // Separate files, not two entry points sharing one (like
-        // FluidDepthBlur.wgsl's CsMainFirst/CsMain) — the clear shader
-        // doesn't touch "particles" at all, while the reduce shader
-        // does, so the two don't have matching bindings the way
-        // FluidDepthBlur's two entry points do. Sharing one file here
-        // produced a benign-but-real inconsistency: the engine's
-        // module-level "is every declared buffer bound?" check expects
-        // particles for both entry points (since it's declared once,
-        // at module scope), but WebGPU's actual per-entry-point
-        // pipeline layout for CsClear excludes it — so satisfying one
-        // check breaks the other.
+        // Separate files, not shared entry points: the clear shader
+        // doesn't touch "particles" at all, and the engine's module-level
+        // binding check requires it either way, breaking one or the other.
         this.maxVelocityClearShader = new ComputeShader(FluidMaxVelocityClear);
         this.maxVelocityClearShader.setStorageBuffer("maxVelocityBits", maxVelocityBuffer);
         this.maxVelocityClearShader.workerSizeX = 1;
@@ -209,16 +183,12 @@ export class FluidSimulator {
         this.integrateShader.workerSizeX = workgroupsFor(particleCount);
     }
 
-    // Live-tunable parameters, for a debug GUI. Each just updates the
-    // CPU-side uniform value — no immediate upload needed, since
-    // compute() already re-applies the whole buffer every frame anyway.
-    // Note: changing restDensity does NOT retroactively resize
-    // particleMass (fixed at construction from the *original*
-    // restDensity) — it only shifts what density the pressure equation
-    // of state (Eq. 9) treats as "correct", independent of how much mass
-    // each particle actually represents. That's an intentional
-    // simplification for interactive tuning, not a physical inconsistency
-    // to fix.
+    // Live-tunable parameters for the debug GUI; compute() re-applies
+    // the whole uniform buffer every frame, so no immediate upload here.
+    // Note: setRestDensity does not retroactively resize particleMass
+    // (fixed at construction) — it only shifts what density the
+    // pressure equation of state treats as "correct". Intentional, not
+    // a bug.
     public setGravity(value: number): void {
         this.params.setFloat("gravity", value);
     }
@@ -251,20 +221,12 @@ export class FluidSimulator {
         this.params.setFloat("deltaTime", dt);
         this.params.apply();
 
-        // Order matters throughout: the max-velocity reduction (cleared,
-        // then reduced) must finish before anything reads it — pressure
-        // force, viscosity force, and integrate all call computeDt(),
-        // which reads it (see FluidMaxVelocityCompute.wgsl and
-        // FluidSimParams.wgsl). It's reading last step's velocities,
-        // since this step's forces haven't been computed yet — a
-        // one-step-old estimate, not a bug. Then: grid cleared before
-        // built, built before queried, density before pressure (Eq. 9
-        // needs it), and pressure before the pressure-force pass (which
-        // needs every particle's pressure, not just its own). Viscosity
-        // force can run either side of pressure force — both just
-        // accumulate independently into velocity — as long as both
-        // finish before integrate. Matches Algorithm 1's order in the
-        // STAR report: neighbors, density, pressure, forces, integrate.
+        // Order matters: max-velocity clear/reduce before anything
+        // calls computeDt() (a one-step-old estimate, not a bug); grid
+        // cleared before built, built before queried; density before
+        // pressure; pressure before pressure-force (needs every
+        // particle's value, not just its own); both forces before
+        // integrate. Matches Algorithm 1's order in the STAR report.
         view.engine3D.context3D.gpuContext.computeCommand(command, [
             this.maxVelocityClearShader,
             this.maxVelocityReduceShader,

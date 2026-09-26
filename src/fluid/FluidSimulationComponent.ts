@@ -1,10 +1,8 @@
 import { ComponentBase, View3D } from "@orillusion/core";
 import { FluidSimulator } from "./FluidSimulator";
 
-// Thin adapter onto the engine's component lifecycle — the actual
-// simulation logic lives in FluidSimulator, kept independent of
-// Orillusion's API surface. addComponent(FluidSimulationComponent, sim)
-// threads `sim` through here via init(param).
+// Thin adapter onto the engine's component lifecycle — simulation
+// logic lives in FluidSimulator, kept independent of this API surface.
 export class FluidSimulationComponent extends ComponentBase {
     private simulator!: FluidSimulator;
 

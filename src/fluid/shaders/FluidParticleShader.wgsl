@@ -13,15 +13,12 @@ var baseMap: texture_2d<f32>;
 @group(3) @binding(0)
 var<storage, read> particles: array<FluidParticle>;
 
-// Debug visualization constant (milestone step 6: pressure heatmap).
-// Pressure (Eq. 9) is left unclamped and can be negative (under-dense
-// regions), so unlike a plain 0-to-max scale this is centered at zero:
-// blue = negative (tension), near-white = zero, red = positive
-// (compression). Magnitude is mapped on a log scale on either side of
-// zero, since the equation of state's 7th power gives it an enormous
-// dynamic range — a linear scale would saturate almost instantly.
-// DEBUG_PRESSURE_LOG_CEILING is the |pressure| that maps to fully
-// saturated — tune if the range looks off.
+// Pressure heatmap: pressure (Eq. 9) can be negative, so this is
+// centered at zero (blue = negative/tension, red = positive/
+// compression) and mapped on a log scale, since the equation of
+// state's 7th power gives it an enormous dynamic range — a linear
+// scale would saturate almost instantly. DEBUG_PRESSURE_LOG_CEILING is
+// the |pressure| that maps to fully saturated.
 const DEBUG_PRESSURE_LOG_CEILING: f32 = 1000000.0;
 
 fn pressureHeatmapColor(pressure: f32) -> vec4<f32> {
@@ -42,11 +39,9 @@ fn pressureHeatmapColor(pressure: f32) -> vec4<f32> {
 fn vert(vertex: VertexAttributes) -> VertexOutput {
     let particle = particles[vertex.index];
 
-    // We position particles ourselves from the storage buffer above,
-    // instead of using the engine's default per-instance model-matrix
-    // lookup (models.matrix[instance_index]) — that array only has one
-    // valid entry (this Object3D's real transform), so for every other
-    // instance it reads garbage GPU memory. Reset to identity.
+    // Particles are positioned from the storage buffer above; the
+    // engine's default per-instance model-matrix lookup only has one
+    // valid entry, so reset to identity instead of using it.
     ORI_MATRIX_M = mat4x4<f32>(
         vec4<f32>(1.0, 0.0, 0.0, 0.0),
         vec4<f32>(0.0, 1.0, 0.0, 0.0),

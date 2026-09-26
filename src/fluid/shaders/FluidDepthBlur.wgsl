@@ -1,16 +1,12 @@
 // Bilateral depth smoothing, run several times over ping-ponged
-// textures (see FluidDepthSmoothPass.ts) rather than as one single
-// pass — per van der Laan, Green, Sainz 2009 Sec 3.5.1 (p.97), a
-// handful of iterations (they found ~6) of a bilateral Gaussian filter
-// reaches similar quality to the full curvature-flow PDE (which needs
-// 40-60 iterations). A single pass, even with a much wider kernel,
-// isn't the same operation as repeated smaller passes — the repeated
-// application is what actually removes per-particle bumps rather than
-// just softening their edges.
+// textures (see FluidDepthSmoothPass.ts) — per van der Laan, Green,
+// Sainz 2009 Sec 3.5.1, ~6 iterations of a bilateral Gaussian filter
+// reaches similar quality to the full curvature-flow PDE (40-60
+// iterations), and isn't equivalent to one pass with a wider kernel.
 //
 // Two Gaussian weights multiplied together: one falls off with pixel
-// distance (spatial), one falls off with depth difference (range) so
-// the blur doesn't smear across the fluid/background silhouette edge.
+// distance (spatial), one with depth difference (range), so the blur
+// doesn't smear across the fluid/background silhouette edge.
 
 @group(0) @binding(0)
 var depthTex: texture_2d<f32>;
@@ -20,30 +16,22 @@ var outTex: texture_storage_2d<r32float, write>;
 
 const KERNEL_RADIUS: i32 = 5;
 const SIGMA_SPACE: f32 = 3.0;
-// Depth here is view-space distance-to-camera in world units (see
-// FluidDepthCaptureShader.wgsl), not normalized depth. Deliberately a
-// fixed constant, NOT derived from particle size: a fixed sigma stays
-// the same absolute width while particle bumps shrink as particle
-// count increases, so it becomes relatively wider compared to finer
-// particles — smaller particles end up more aggressively smoothed
-// automatically, which is the actual desired behavior (more
-// particles => smoother, not just finer). Scaling sigma down to match
-// particle size would cancel that out and keep the relative smoothing
-// the same regardless of resolution.
+// Depth is view-space distance-to-camera in world units (see
+// FluidDepthCaptureShader.wgsl). Deliberately a fixed constant, not
+// derived from particle size: a fixed absolute width becomes
+// relatively wider as particles shrink at higher counts, so denser
+// configurations end up more smoothed automatically — scaling it down
+// with particle size would cancel that out.
 const SIGMA_RANGE: f32 = 0.3;
-// A real particle's distance is always > 0 (anything at the camera
-// itself is already clipped) — 0 unambiguously means "no particle",
-// since that's what FluidDepthPass's clear color leaves untouched
-// background pixels holding.
+// A real particle's distance is always > 0; 0 is FluidDepthPass's
+// clear color, unambiguously "no particle".
 const EMPTY_DEPTH: f32 = 0.0;
 
-// Only the very first iteration reads FluidDepthPass's raw
-// render-target output, which (unlike a texture a compute shader
-// wrote) stores rows in the opposite order from plain compute
-// pixel-index addressing (the same reason FluidShadeComposite.wgsl's
-// baseMap needs a Y-flip when sampled). Every later iteration reads a
-// texture one of these compute passes wrote itself, already in
-// top-down order, so it must NOT be flipped again.
+// Only the first iteration reads FluidDepthPass's raw render-target
+// output, which stores rows in the opposite order from a compute
+// shader's own pixel-index addressing (same reason
+// FluidShadeComposite.wgsl's baseMap needs a Y-flip). Later iterations
+// read a texture written by this same shader, already top-down.
 fn loadDepth(coord: vec2<i32>, size: vec2<u32>, flipRead: bool) -> f32 {
     var c = coord;
     if (flipRead) {

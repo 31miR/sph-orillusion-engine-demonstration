@@ -1,15 +1,10 @@
 // Step 3 of the screen-space fluid renderer: reconstruct a view-space
-// surface normal at each pixel from the smoothed distance-to-camera
-// texture (FluidDepthSmoothPass's output) — no 3D mesh is ever built,
-// just per-pixel math on the depth image (STAR report Sec 7.3;
-// van der Laan et al. 2009 describes the same reconstruct-then-shade
-// structure). The unprojection formula (linear view-z depth -> view
-// position, via the inverse projection matrix) mirrors Orillusion's
-// own internal reconstructViewPosFromLinearDepth (used by GTAO/SSR),
-// verified by reading it directly — reimplemented against our own
-// uniform data rather than depending on the engine's internal
-// GlobalUniform bind group, which a standalone ComputeShader (outside
-// the normal per-object rendering path) has no way to reach.
+// surface normal per pixel from the smoothed depth image, no 3D mesh
+// involved (STAR report Sec 7.3; van der Laan et al. 2009). The
+// unprojection mirrors Orillusion's own internal
+// reconstructViewPosFromLinearDepth, reimplemented against our own
+// uniform data since a standalone ComputeShader can't reach the
+// engine's internal GlobalUniform bind group.
 
 struct ReconstructParams {
     projMatInv: mat4x4<f32>,

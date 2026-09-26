@@ -87,10 +87,8 @@ async function init() {
     scene.addChild(fluidParticles.object3D);
     scene.addChild(fluidParticles.depthCaptureObject3D);
 
-    // Explicit values (not FluidSimulator's internal defaults) so the GUI
-    // below is seeded with exactly what's actually running, not a value
-    // that could silently drift out of sync with the constructor's own
-    // defaults.
+    // Explicit values, not FluidSimulator's internal defaults, so the
+    // GUI below can't silently drift out of sync with the constructor.
     const tunables = {
         gravity: 9.8,
         restitution: 0.4,
@@ -118,14 +116,7 @@ async function init() {
     fluidFolder.add(tunables, "restDensity", 100, 5000).onChange((v: number) => simulator.setRestDensity(v));
     fluidFolder.add(tunables, "stiffness", 0, 200).onChange((v: number) => simulator.setStiffness(v));
     fluidFolder.add(tunables, "viscosity", 0, 2).onChange((v: number) => simulator.setViscosity(v));
-    // Range widened back out now that computeDt() (FluidSimParams.wgsl)
-    // carries the actual per-step CFL safety — this only bounds the
-    // first step(s), before that dynamic measurement has real data. See
-    // FluidSimulator.ts's maxDeltaTime comment.
     fluidFolder.add(tunables, "maxDeltaTime", 1 / 200, 1 / 5).onChange((v: number) => simulator.setMaxDeltaTime(v));
-    // Re-uploads the original grid positions/zero velocities — see
-    // FluidParticleField.reset()'s own comment for why nothing else
-    // (neighbor grid, max-velocity buffer) needs resetting alongside it.
     fluidFolder.add({ reset: () => fluidParticles.reset(engine.context3D.device) }, "reset").name("Reset particles");
     fluidFolder.open();
 
@@ -135,32 +126,22 @@ async function init() {
 
     engine.startRenderView(view);
 
-    // Excludes the depth-capture echo from the normal on-screen
-    // picture. depthCaptureRenderer already has visibleLayer set to
-    // VisibleLayer.None (see FluidParticleField), which keeps every
-    // ordinary, layer/mask-based pass (ColorPass etc.) from drawing
-    // it. FluidDepthPass draws that same renderer directly — bypassing
-    // layer/mask-based scene traversal entirely — so it's unaffected
-    // by that setting.
-
-    // Screen-space fluid renderer: render the depth-capture echo into
-    // an isolated off-screen target using the main camera directly
-    // (FluidDepthPass), smooth it (FluidDepthSmoothPass), reconstruct
-    // a surface normal per pixel (FluidNormalReconstructPass), then
-    // shade + composite over the scene (FluidShadeCompositePost).
+    // Screen-space fluid renderer: capture depth (FluidDepthPass),
+    // smooth it (FluidDepthSmoothPass), reconstruct normals
+    // (FluidNormalReconstructPass), then shade + composite
+    // (FluidShadeCompositePost).
     const depthPass = view.renderGraph!.add(FluidDepthPass, fluidParticles.depthCaptureRenderer);
     const smoothPass = view.renderGraph!.add(FluidDepthSmoothPass, depthPass);
     const normalPass = view.renderGraph!.add(FluidNormalReconstructPass, smoothPass);
 
-    // addPost() only ever constructs with no arguments, so the two
-    // upstream passes are wired in afterward via configure().
+    // addPost() only constructs with no arguments, so upstream passes
+    // are wired in afterward via configure().
     const postProcessing = scene.addComponent(PostProcessingComponent);
     const shadeComposite = postProcessing.addPost(FluidShadeCompositePost);
     shadeComposite.configure(smoothPass, normalPass);
 
-    // The composite paints over the particles' screen-space footprint
-    // using the depth capture; the original spheres would otherwise
-    // still be drawn underneath/showing through.
+    // The composite paints over the particles using the depth capture;
+    // the original spheres would otherwise show through.
     fluidParticles.setSpheresVisible(false);
 }
 

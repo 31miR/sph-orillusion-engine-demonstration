@@ -17,13 +17,9 @@ const DEPTH_CAPTURE_RADIUS_SCALE = 2.0;
 export class FluidParticleField {
     public readonly object3D: Object3D;
     // Second, screen-invisible instance of the same particles, used
-    // only so FluidDepthPass can render their distance from the
-    // camera (see FluidDepthCaptureMaterial) into an isolated
-    // off-screen target without that showing up in the normal
-    // on-screen picture. FluidDepthPass draws depthCaptureRenderer
-    // directly (see main.ts) rather than going through any layer/mask
-    // based scene traversal, so VisibleLayer.None here only affects
-    // ordinary passes (ColorPass etc.), not FluidDepthPass itself.
+    // only so FluidDepthPass can render their distance from the camera
+    // into an isolated target — see FluidDepthCaptureMaterial and the
+    // visibleLayer comment below.
     public readonly depthCaptureObject3D: Object3D;
     public readonly depthCaptureRenderer: MeshRenderer;
     private readonly sphereRenderer: MeshRenderer;
@@ -31,8 +27,7 @@ export class FluidParticleField {
     public readonly particleCount: number;
     public readonly particleRadius: number;
     public readonly spacing: number;
-    // Kept around purely so reset() can re-upload it later — the exact
-    // same array the buffer was originally constructed from.
+    // Kept so reset() can re-upload the original layout.
     private readonly initialData: Float32Array;
 
     constructor(particlesPerAxis: number = 8, spacing: number = 0.3, particleRadius: number = 0.12) {
@@ -81,36 +76,27 @@ export class FluidParticleField {
         depthMr.geometry = depthGeometry;
         depthMr.material = new FluidDepthCaptureMaterial();
         depthMr.instanceCount = this.particleCount;
-        // Hides it from every ordinary, layer/mask-based pass
-        // (ColorPass etc.) — the same mechanism setSpheresVisible(false)
-        // below already uses successfully. FluidDepthPass never calls
-        // collectLayered()/consults visibleLayer at all, so this has
-        // no effect on whether FluidDepthPass draws it.
+        // Hides it from ordinary layer/mask-based passes (ColorPass
+        // etc.); FluidDepthPass draws it directly and ignores
+        // visibleLayer entirely.
         depthMr.visibleLayer = VisibleLayer.None;
         depthMr.material.getPass(PassType.COLOR)[0]!.setStorageBuffer("particles", this.buffer);
         this.depthCaptureRenderer = depthMr;
     }
 
-    // The screen-space renderer's shading/composite step paints over
-    // the particles' screen-space footprint using the depth capture,
-    // not by replacing this mesh — so once it's working, the original
-    // spheres need to be hidden or they'd still show through/behind it.
+    // The composite step paints over the particles' footprint using
+    // the depth capture, not by replacing this mesh, so the original
+    // spheres need hiding once it's active.
     setSpheresVisible(visible: boolean): void {
         this.sphereRenderer.visibleLayer = visible ? VisibleLayer.Default : VisibleLayer.None;
     }
 
-    // Re-uploads the original grid positions/zero velocities over
-    // whatever the simulation has since evolved the buffer to. Nothing
-    // else needs resetting alongside it: FluidSimulator's neighbor-search
-    // grid and max-velocity buffer both fully rebuild from this buffer's
-    // contents every single frame, so neither holds any stale state that
-    // would survive on its own.
+    // Nothing else needs resetting alongside this: FluidSimulator's
+    // grid and max-velocity buffer both fully rebuild every frame.
     reset(device: GPUDevice): void {
-        // Cast: @webgpu/types' writeBuffer wants an ArrayBufferView backed
-        // specifically by ArrayBuffer, not the broader ArrayBufferLike a
-        // plain `new Float32Array(n)` is typed as — it's always a real
-        // ArrayBuffer at runtime (never SharedArrayBuffer), just typed
-        // more loosely than this particular signature expects.
+        // Cast: writeBuffer wants an ArrayBuffer-backed view; a plain
+        // Float32Array is typed more loosely than that even though
+        // it's always backed by a real ArrayBuffer at runtime.
         device.queue.writeBuffer(this.buffer.buffer, 0, this.initialData as Float32Array<ArrayBuffer>);
     }
 }

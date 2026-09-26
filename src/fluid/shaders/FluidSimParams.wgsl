@@ -34,22 +34,15 @@ struct SimParams {
     viscosity: f32,
 };
 
-// CFL condition (STAR report, p.3, right after Algorithm 1): a stable
-// step satisfies dt <= lambda * particleDiameter / v_max, lambda ~= 0.4
-// per [Mon92]. Every shader that multiplies an acceleration/velocity by
-// dt (pressure force, viscosity force, integrate) calls this instead of
-// reading params.deltaTime directly, so the step size actually taken
-// adapts to how fast the fluid currently is — smaller during a fast
-// splash, allowed back up to the requested size once it calms down —
-// rather than always assuming a fixed worst case.
+// CFL condition (STAR report p.3): dt <= lambda * particleDiameter /
+// v_max, lambda ~= 0.4 per [Mon92]. Called instead of reading
+// params.deltaTime directly wherever a shader multiplies by dt, so the
+// step size adapts to the fluid's current speed.
 const CFL_LAMBDA: f32 = 0.4;
 
-// maxVelocityBits comes from FluidMaxVelocityCompute.wgsl's atomicMax
-// reduction over last step's velocities (raw bits — see that file for
-// why), not this step's: the reduction can only see the previous
-// step's finished velocities, since this step's forces haven't been
-// computed yet when it runs. A one-step-old estimate is a fine
-// approximation (velocity doesn't change instantly), not a bug.
+// maxVelocityBits is last step's velocities (this step's forces
+// haven't run yet when this is read) — a one-step-old estimate, not a
+// bug.
 fn computeDt(requestedDt: f32, maxVelocityBits: u32, particleDiameter: f32) -> f32 {
     let maxVelocity = bitcast<f32>(maxVelocityBits);
     let safeDt = CFL_LAMBDA * particleDiameter / max(maxVelocity, 1e-5);

@@ -13,20 +13,14 @@ var baseMap: texture_2d<f32>;
 @group(3) @binding(0)
 var<storage, read> particles: array<FluidParticle>;
 
-// Rendered by FluidDepthPass into an isolated off-screen target (see
-// FluidDepthPass.ts) instead of shown on screen — this material never
-// appears in the normal view. Its only job is to encode, as an
-// ordinary color value, the one number the screen-space renderer
-// actually needs: distance from the camera to this particle.
+// Rendered by FluidDepthPass into an isolated target (see
+// FluidDepthPass.ts), never shown on screen. Encodes one number per
+// pixel: distance from the camera to this particle.
 //
-// View space looks down +Z in this engine's convention (confirmed via
-// Camera3D's perspective matrix: clip.w = viewPos.z, which must be
-// positive for anything visible), so distance in front of the camera
-// is Z itself, unnegated. Background pixels (no particle drawn) keep
-// the target's clear color, 0 — a real particle can never produce
-// exactly 0 since anything at the camera's near plane is already
-// clipped, so 0 unambiguously means "no particle here" for the
-// smoothing step that reads this back.
+// View space looks down +Z here (clip.w = viewPos.z, positive for
+// anything visible), so distance is Z itself, unnegated. Background
+// pixels keep the clear color, 0 — unambiguous, since a real particle
+// can never produce exactly 0.
 fn vert(vertex: VertexAttributes) -> VertexOutput {
     let particle = particles[vertex.index];
 

@@ -9,31 +9,22 @@ function workgroupsFor(pixels: number): number {
     return Math.ceil(pixels / WORKGROUP_SIZE);
 }
 
-// Number of bilateral-blur passes to chain, ping-ponging between two
-// textures — see FluidDepthBlur.wgsl's header comment (van der Laan et
-// al. 2009 Sec 3.5.1): ~6 iterations of a bilateral Gaussian filter is
-// reported to reach similar quality to full curvature flow.
+// Bilateral-blur iterations to chain, ping-ponging between two
+// textures — van der Laan et al. 2009 Sec 3.5.1 reports ~6 iterations
+// reaching similar quality to full curvature flow.
 const BLUR_ITERATIONS = 6;
 
 // Step 2 of the screen-space fluid renderer: smooth FluidDepthPass's
 // captured distances into one continuous surface (see
-// FluidDepthBlur.wgsl for the bilateral-blur math + citations).
+// FluidDepthBlur.wgsl for the bilateral-blur math).
 //
-// `b.dependsOn("FluidDepthPass")` is what guarantees this runs after
-// the capture for the current frame — FluidDepthPass doesn't publish
-// its color texture as a named graph-pool resource, so there's no
-// `b.read(...)` edge to hook into. `dependsOn` is the render graph's
-// documented mechanism for exactly this situation: an upstream pass
-// whose output is consumed through a side channel (here,
-// capturedDistanceTexture) rather than a tracked resource.
+// `b.dependsOn("FluidDepthPass")`, not `b.read`: FluidDepthPass
+// doesn't publish its texture as a named graph resource (it's read via
+// capturedDistanceTexture instead), so dependsOn is the only way to
+// order against it.
 export class FluidDepthSmoothPass extends RenderGraphPass {
     readonly name = "FluidDepthSmoothPass";
 
-    // One ComputeShader per iteration, each with its own fixed
-    // input/output texture binding set once in setup() (rather than
-    // rebinding a single shared instance's textures every frame) —
-    // matches how the engine's own multi-pass compute chains (e.g.
-    // Bloom's per-mip blurComputes) are built.
     private blurShaders: ComputeShader[] = [];
     private pingTextures!: [RenderTexture, RenderTexture];
     private finalTexture!: RenderTexture;
@@ -44,33 +35,22 @@ export class FluidDepthSmoothPass extends RenderGraphPass {
         this.depthPass = depthPass;
     }
 
-    // this.finalTexture is set in setup(), but setup() across
-    // different passes can run in any order within the same compile —
-    // consumers (FluidNormalReconstructPass) should read this from
-    // their own execute(), which always runs after every pass's
-    // setup() has completed, not from their own setup().
+    // Consumers should read this from their own execute() (which
+    // always runs after every pass's setup()), not from their setup() —
+    // setup() order across passes isn't guaranteed within one compile.
     get smoothedDepthTexture(): RenderTexture {
         return this.finalTexture;
     }
 
     private createPingTexture(ctx: any): RenderTexture {
-        // RTResourceMap.createRTTexture (used originally here) builds a
-        // texture meant for ordinary render-target use — its usage
-        // flags include TextureBinding/RenderAttachment but not
-        // StorageBinding, so a compute shader can never write into it
-        // (confirmed by the browser's own WebGPU validation error).
-        // Constructing RenderTexture directly exposes the usage flags
-        // so we can ask for STORAGE_BINDING explicitly.
+        // RTResourceMap.createRTTexture's usage flags don't include
+        // STORAGE_BINDING, so a compute shader can't write into it —
+        // constructing RenderTexture directly exposes the usage flags.
         //
-        // Sized from ctx.presentationSize, NOT window.innerWidth/Height:
-        // the engine's real canvas resolution is
-        // canvas.clientWidth * devicePixelRatio (see updateSize() in
-        // orillusion.es.max.js), which only equals window.innerWidth
-        // when devicePixelRatio is 1 — true on most Windows displays,
-        // false on any Retina/HiDPI screen (e.g. a MacBook), where this
-        // texture would otherwise end up a fraction of the size of
-        // FluidDepthPass's actual capture (which defaults to
-        // presentationSize), silently dropping most of its writes.
+        // Sized from ctx.presentationSize, not window.innerWidth/Height:
+        // the real canvas resolution is clientWidth * devicePixelRatio,
+        // which only matches window.innerWidth when devicePixelRatio is
+        // 1 (false on HiDPI displays).
         const presentationWidth = ctx.presentationSize[0]!;
         const presentationHeight = ctx.presentationSize[1]!;
         const texture = new RenderTexture(
@@ -85,15 +65,10 @@ export class FluidDepthSmoothPass extends RenderGraphPass {
             true,
             ctx,
         );
-        // r32float (and other 32-bit float formats) can only ever be
-        // bound as "unfilterable-float" in WebGPU — they don't support
-        // linear filtering. RenderTexture's own default assumes the
-        // filterable "float" sample type, which WebGPU then rejects at
-        // bind-group creation for this format. This isn't a guess: the
-        // engine's own internal r32float consumers (HiZPass and
-        // others) hit the identical problem and fix it exactly this
-        // way — see the _patchMipLevels doc comment in
-        // orillusion.es.max.js for the engine's own account of it.
+        // r32float doesn't support linear filtering in WebGPU, so it
+        // must be bound as "unfilterable-float" — RenderTexture
+        // defaults to "float", which WebGPU rejects for this format
+        // (same fix the engine's own HiZPass applies to r32float).
         texture.textureBindingLayout.sampleType = "unfilterable-float";
         return texture;
     }

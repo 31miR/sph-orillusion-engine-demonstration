@@ -29,9 +29,8 @@ export class FluidNormalReconstructPass extends RenderGraphPass {
         b.dependsOn("FluidDepthSmoothPass");
 
         const ctx = b.context3D;
-        // Sized from ctx.presentationSize, not window.innerWidth/Height
-        // — see the matching comment in FluidDepthSmoothPass.ts for why
-        // those two differ on any HiDPI display.
+        // Sized from presentationSize, not window.innerWidth/Height —
+        // see FluidDepthSmoothPass.ts (HiDPI).
         const presentationWidth = ctx.presentationSize[0]!;
         const presentationHeight = ctx.presentationSize[1]!;
         this.outputTexture = new RenderTexture(
@@ -47,9 +46,8 @@ export class FluidNormalReconstructPass extends RenderGraphPass {
             ctx,
         );
 
-        // Just the camera's inverse projection matrix (64 bytes) — see
-        // FluidNormalReconstruct.wgsl for why this is our own small
-        // uniform buffer instead of the engine's internal
+        // Camera's inverse projection matrix (64 bytes) — a standalone
+        // ComputeShader has no way to reach the engine's internal
         // GlobalUniform bind group.
         this.params = new UniformGPUBuffer(64);
 
@@ -66,10 +64,8 @@ export class FluidNormalReconstructPass extends RenderGraphPass {
         const view = ctx.view;
         const depthTexture = this.smoothPass.smoothedDepthTexture;
 
-        // setMatrix, not setFloat32Array — the field is declared
-        // `mat4x4<f32>` in the shader, and there's a dedicated method
-        // for exactly that on GPUBufferBase; setFloat32Array doesn't
-        // reliably map onto a matrix-typed struct field.
+        // setMatrix, not setFloat32Array — the field is mat4x4<f32> in
+        // the shader, and setFloat32Array doesn't reliably map onto it.
         this.params.setMatrix("projMatInv", view.camera.projectionMatrixInv);
         this.params.apply();
 
