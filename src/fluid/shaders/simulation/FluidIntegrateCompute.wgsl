@@ -18,7 +18,7 @@ fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
     }
 
     var particle = particles[i];
-    let dt = computeDt(params.deltaTime, maxVelocityBits[0], 2.0 * params.particleRadius);
+    let dt = computeDt(params, maxVelocityBits[0]);
 
     // Semi-implicit (symplectic) Euler: update velocity first, then
     // use the *new* velocity to advance position (Algorithm 1 in the

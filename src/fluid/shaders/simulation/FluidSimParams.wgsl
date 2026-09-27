@@ -42,11 +42,15 @@ const CFL_LAMBDA: f32 = 0.4;
 
 // maxVelocityBits is last step's velocities (this step's forces
 // haven't run yet when this is read) — a one-step-old estimate, not a
-// bug.
-fn computeDt(requestedDt: f32, maxVelocityBits: u32, particleDiameter: f32) -> f32 {
+// bug. c_s = sqrt(7k/rho_0) is the Tait EOS's speed of sound at rest
+// density; combining it with v_max in one denominator (rather than a
+// separate condition) matches Monaghan's standard WCSPH CFL form.
+fn computeDt(params: SimParams, maxVelocityBits: u32) -> f32 {
     let maxVelocity = bitcast<f32>(maxVelocityBits);
-    let safeDt = CFL_LAMBDA * particleDiameter / max(maxVelocity, 1e-5);
-    return min(requestedDt, safeDt);
+    let particleDiameter = 2.0 * params.particleRadius;
+    let soundSpeed = sqrt(7.0 * params.stiffness / params.restDensity);
+    let safeDt = CFL_LAMBDA * particleDiameter / (soundSpeed + max(maxVelocity, 1e-5));
+    return min(params.deltaTime, safeDt);
 }
 
 fn simCellCoord(params: SimParams, pos: vec3<f32>) -> vec3<i32> {

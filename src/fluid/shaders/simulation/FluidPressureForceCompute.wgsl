@@ -74,6 +74,6 @@ fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
         }
     }
 
-    let dt = computeDt(params.deltaTime, maxVelocityBits[0], 2.0 * params.particleRadius);
+    let dt = computeDt(params, maxVelocityBits[0]);
     particles[i].velocity = vec4<f32>(particles[i].velocity.xyz + accel * dt, particles[i].velocity.w);
 }

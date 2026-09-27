@@ -57,10 +57,10 @@ const SKY_TINT: vec3<f32> = vec3<f32>(0.6, 0.75, 0.9);
 // enough for one extra texture sample. Tuned by eye: too large starts
 // sampling parts of the screen unrelated to "what's behind this point
 // in the water."
-const REFRACTION_STRENGTH: f32 = 0.04;
+const REFRACTION_STRENGTH: f32 = 0.02;
 // How much of the water's own color tints the refracted view — at 0
 // this would look like clear glass, not colored water.
-const WATER_TINT_STRENGTH: f32 = 0.35;
+const WATER_TINT_STRENGTH: f32 = 0.15;
 
 fn shadeSurface(coord: vec2<i32>, flippedUV: vec2<f32>) -> vec3<f32> {
     let packedNormal = textureLoad(normalTex, coord, 0).xyz;
