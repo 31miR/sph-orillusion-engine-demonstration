@@ -14,6 +14,19 @@ function workgroupsFor(pixels: number): number {
 // reaching similar quality to full curvature flow.
 const BLUR_ITERATIONS = 6;
 
+// The kernel radius is a WGSL const (it bounds the sampling loop), so a
+// radius chosen at startup is written into the source before compiling.
+function withBlurRadius(source: string, radius: number): string {
+    const radiusPattern = /const KERNEL_RADIUS: i32 = \d+;/;
+    const sigmaPattern = /const SIGMA_SPACE: f32 = [\d.]+;/;
+    if (!radiusPattern.test(source) || !sigmaPattern.test(source)) {
+        throw new Error("FluidDepthBlur.wgsl: KERNEL_RADIUS / SIGMA_SPACE declarations not found");
+    }
+    return source
+        .replace(radiusPattern, `const KERNEL_RADIUS: i32 = ${radius};`)
+        .replace(sigmaPattern, `const SIGMA_SPACE: f32 = ${(radius / 2).toFixed(2)};`);
+}
+
 // Step 2 of the screen-space fluid renderer: smooth FluidDepthPass's
 // captured distances into one continuous surface (see
 // FluidDepthBlur.wgsl for the bilateral-blur math).
@@ -29,10 +42,14 @@ export class FluidDepthSmoothPass extends RenderGraphPass {
     private pingTextures!: [RenderTexture, RenderTexture];
     private finalTexture!: RenderTexture;
     private depthPass: FluidDepthPass;
+    private readonly blurSource: string;
+    readonly renderScale: number;
 
-    constructor(depthPass: FluidDepthPass) {
+    constructor(depthPass: FluidDepthPass, blurRadius: number) {
         super();
         this.depthPass = depthPass;
+        this.renderScale = depthPass.renderScale;
+        this.blurSource = withBlurRadius(FluidDepthBlur, blurRadius);
     }
 
     // Consumers should read this from their own execute() (which
@@ -51,7 +68,7 @@ export class FluidDepthSmoothPass extends RenderGraphPass {
         // the real canvas resolution is clientWidth * devicePixelRatio,
         // which only matches window.innerWidth when devicePixelRatio is
         // 1 (false on HiDPI displays).
-        const [width, height] = fluidRenderSize(ctx.presentationSize);
+        const [width, height] = fluidRenderSize(ctx.presentationSize, this.renderScale);
         const texture = new RenderTexture(
             width,
             height,
@@ -80,7 +97,7 @@ export class FluidDepthSmoothPass extends RenderGraphPass {
 
         this.blurShaders = [];
         for (let i = 0; i < BLUR_ITERATIONS; i++) {
-            const shader = new ComputeShader(FluidDepthBlur);
+            const shader = new ComputeShader(this.blurSource);
             shader.entryPoint = i === 0 ? "CsMainFirst" : "CsMain";
             const outputTexture = this.pingTextures[i % 2]!;
             shader.setStorageTexture("outTex", outputTexture);

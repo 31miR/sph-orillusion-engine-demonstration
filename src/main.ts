@@ -19,15 +19,24 @@ const RADIUS_TO_SPACING_RATIO = 0.4;
 // Performance cap, not a correctness one.
 const MAX_PARTICLES_PER_AXIS = 100;
 
+// Blur radius (in pixels) the depth smoothing was tuned at, at full
+// resolution; scaled by the chosen resolutions so its on-screen
+// footprint stays the same.
+const FULL_RES_BLUR_RADIUS = 12;
+
 interface StartConfig {
     particlesPerAxis: number;
+    resolutionScale: number;
+    fluidRenderScale: number;
 }
 
 function askStartConfig(): Promise<StartConfig> {
     return new Promise((resolve) => {
-        const config: StartConfig = { particlesPerAxis: 18 };
+        const config: StartConfig = { particlesPerAxis: 18, resolutionScale: 1, fluidRenderScale: 0.5 };
         const gui = new dat.GUI({ name: "Setup" });
         gui.add(config, "particlesPerAxis", 4, MAX_PARTICLES_PER_AXIS, 1).name("Particles per axis");
+        gui.add(config, "resolutionScale", 0.25, 1, 0.05).name("Resolution scale");
+        gui.add(config, "fluidRenderScale", 0.25, 1, 0.05).name("Fluid render scale");
         gui.add({ start: () => { gui.destroy(); resolve(config); } }, "start").name("Start");
     });
 }
@@ -37,7 +46,10 @@ async function init() {
 
     const engine = await Engine3D.init({
         canvasConfig: {
-            canvas: document.getElementById('canvas') as HTMLCanvasElement
+            canvas: document.getElementById('canvas') as HTMLCanvasElement,
+            // Renders below native resolution; the browser stretches the
+            // canvas back to the window size.
+            devicePixelRatio: (window.devicePixelRatio || 1) * startConfig.resolutionScale,
         },
         setting: {
             render: {
@@ -130,8 +142,9 @@ async function init() {
     // smooth it (FluidDepthSmoothPass), reconstruct normals
     // (FluidNormalReconstructPass), then shade + composite
     // (FluidShadeCompositePost).
-    const depthPass = view.renderGraph!.add(FluidDepthPass, fluidParticles.depthCaptureRenderer);
-    const smoothPass = view.renderGraph!.add(FluidDepthSmoothPass, depthPass);
+    const blurRadius = Math.max(1, Math.round(FULL_RES_BLUR_RADIUS * startConfig.resolutionScale * startConfig.fluidRenderScale));
+    const depthPass = view.renderGraph!.add(FluidDepthPass, fluidParticles.depthCaptureRenderer, startConfig.fluidRenderScale);
+    const smoothPass = view.renderGraph!.add(FluidDepthSmoothPass, depthPass, blurRadius);
     const normalPass = view.renderGraph!.add(FluidNormalReconstructPass, smoothPass);
 
     // addPost() only constructs with no arguments, so upstream passes

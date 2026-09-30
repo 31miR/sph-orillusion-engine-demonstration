@@ -3,16 +3,14 @@ import type { RenderGraphBuilder, RenderGraphPassContext } from "@orillusion/cor
 
 export const FLUID_DEPTH_RT = "FluidDepthRT";
 
-// The depth capture, smoothing and normal passes all run at this
-// fraction of the canvas resolution — the blur is fill-rate bound, and
+// The depth capture, smoothing and normal passes all run at renderScale
+// times the canvas resolution — the blur is fill-rate bound, and
 // van der Laan et al. 2009 (Sec. 3.5.1) likewise smooth at half or
 // quarter resolution.
-export const FLUID_RENDER_SCALE = 0.5;
-
-export function fluidRenderSize(presentationSize: number[]): [number, number] {
+export function fluidRenderSize(presentationSize: number[], renderScale: number): [number, number] {
     return [
-        Math.max(1, Math.floor(presentationSize[0]! * FLUID_RENDER_SCALE)),
-        Math.max(1, Math.floor(presentationSize[1]! * FLUID_RENDER_SCALE)),
+        Math.max(1, Math.floor(presentationSize[0]! * renderScale)),
+        Math.max(1, Math.floor(presentationSize[1]! * renderScale)),
     ];
 }
 
@@ -36,14 +34,16 @@ export class FluidDepthPass extends RenderGraphPass {
 
     private target!: RenderGraphRenderTarget;
     private readonly node: MeshRenderer;
+    readonly renderScale: number;
 
-    constructor(node: MeshRenderer) {
+    constructor(node: MeshRenderer, renderScale: number) {
         super();
         this.node = node;
+        this.renderScale = renderScale;
     }
 
     setup(b: RenderGraphBuilder): void {
-        const [width, height] = fluidRenderSize(b.context3D.presentationSize);
+        const [width, height] = fluidRenderSize(b.context3D.presentationSize, this.renderScale);
         this.target = b.createRenderTarget(FLUID_DEPTH_RT, {
             label: FLUID_DEPTH_RT,
             width,

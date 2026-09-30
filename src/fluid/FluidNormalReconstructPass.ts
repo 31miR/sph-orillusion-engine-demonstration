@@ -32,7 +32,7 @@ export class FluidNormalReconstructPass extends RenderGraphPass {
         const ctx = b.context3D;
         // Sized from presentationSize, not window.innerWidth/Height —
         // see FluidDepthSmoothPass.ts (HiDPI).
-        const [width, height] = fluidRenderSize(ctx.presentationSize);
+        const [width, height] = fluidRenderSize(ctx.presentationSize, this.smoothPass.renderScale);
         this.outputTexture = new RenderTexture(
             width,
             height,
