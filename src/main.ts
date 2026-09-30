@@ -1,4 +1,4 @@
-import { Engine3D, Scene3D, Camera3D, Object3D, View3D, DirectLight, Color, HoverCameraController, AtmosphericComponent, MeshRenderer, PlaneGeometry, LitMaterial, PostProcessingComponent } from "@orillusion/core";
+import { Engine3D, Scene3D, Camera3D, Object3D, View3D, DirectLight, Color, HoverCameraController, AtmosphericComponent, MeshRenderer, BoxGeometry, LitMaterial, PostProcessingComponent } from "@orillusion/core";
 import { Stats } from "@orillusion/stats";
 import * as dat from "dat.gui";
 import { FluidParticleField } from "./fluid/FluidParticleField";
@@ -23,6 +23,8 @@ const MAX_PARTICLES_PER_AXIS = 100;
 // resolution; scaled by the chosen resolutions so its on-screen
 // footprint stays the same.
 const FULL_RES_BLUR_RADIUS = 12;
+
+const WALL_THICKNESS = 0.2;
 
 interface StartConfig {
     particlesPerAxis: number;
@@ -81,14 +83,27 @@ async function init() {
 
     const bounds = DEFAULT_FLUID_BOUNDS;
 
-    const floorObj = new Object3D();
-    const floorRenderer = floorObj.addComponent(MeshRenderer);
-    const floorWidth = bounds.max.x - bounds.min.x;
-    const floorDepth = bounds.max.z - bounds.min.z;
-    floorRenderer.geometry = new PlaneGeometry(floorWidth, floorDepth, 1, 1);
-    floorRenderer.material = new LitMaterial();
-    floorObj.y = bounds.min.y;
-    scene.addChild(floorObj);
+    // Slabs sit entirely outside the bounds, so their inner faces lie
+    // exactly on the simulation's walls. Extents are chosen so no two
+    // slabs overlap (overlapping coplanar faces would z-fight).
+    const { min, max } = bounds;
+    const addSlab = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number) => {
+        const obj = new Object3D();
+        const renderer = obj.addComponent(MeshRenderer);
+        renderer.geometry = new BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
+        renderer.material = new LitMaterial();
+        obj.x = (x0 + x1) / 2;
+        obj.y = (y0 + y1) / 2;
+        obj.z = (z0 + z1) / 2;
+        scene.addChild(obj);
+    };
+
+    addSlab(min.x, max.x, min.y - WALL_THICKNESS, min.y, min.z, max.z);
+    // Only the two walls on the far side of the initial camera
+    // (setCamera above starts it on the +x/+z side), so the fluid
+    // stays visible while the container still reads as one.
+    addSlab(min.x - WALL_THICKNESS, min.x, min.y - WALL_THICKNESS, max.y, min.z, max.z);
+    addSlab(min.x - WALL_THICKNESS, max.x, min.y - WALL_THICKNESS, max.y, min.z - WALL_THICKNESS, min.z);
 
     // spacing/particleRadius derived from the chosen particle count so
     // the block's overall footprint stays at FLUID_BLOCK_SPAN
