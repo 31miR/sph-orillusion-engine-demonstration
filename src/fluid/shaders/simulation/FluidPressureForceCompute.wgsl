@@ -17,6 +17,19 @@ var<storage, read> particleNext: array<i32>;
 @group(0) @binding(4)
 var<storage, read> maxVelocityBits: array<u32>;
 
+// xyz = static wall position, w = Akinci volume.
+@group(0) @binding(5)
+var<storage, read> boundaryPositions: array<vec4<f32>>;
+
+// Static grid over boundaryPositions (built once — see
+// FluidBoundaryGridBuild.wgsl), sharing the fluid grid's cell size and
+// dimensions.
+@group(0) @binding(6)
+var<storage, read> boundaryCellHead: array<i32>;
+
+@group(0) @binding(7)
+var<storage, read> boundaryNext: array<i32>;
+
 // Symmetric pressure force (Eq. 6 applied to pressure), the standard
 // SPH formulation that guarantees equal-and-opposite forces between
 // every pair (Newton's third law) regardless of any density asymmetry:
@@ -69,6 +82,41 @@ fn CsMain(@builtin(global_invocation_id) globalId: vec3<u32>) {
                         }
                     }
                     j = particleNext[u32(j)];
+                }
+            }
+        }
+    }
+
+    // Boundary reaction, same coefficient (1x) as an ordinary fluid
+    // neighbor — no reciprocal "p_b/rho_b^2" term, since a static wall
+    // particle has no pressure unknown of its own.
+    let reach = 2.0 * params.smoothingLength;
+    let nearWall = posI.x < params.boundsMinX + reach || posI.x > params.boundsMaxX - reach
+        || posI.y < params.boundsMinY + reach || posI.y > params.boundsMaxY - reach
+        || posI.z < params.boundsMinZ + reach || posI.z > params.boundsMaxZ - reach;
+    if (nearWall) {
+        for (var dz = -1; dz <= 1; dz = dz + 1) {
+            for (var dy = -1; dy <= 1; dy = dy + 1) {
+                for (var dx = -1; dx <= 1; dx = dx + 1) {
+                    let neighborCoord = baseCoord + vec3<i32>(dx, dy, dz);
+                    if (any(neighborCoord < vec3<i32>(0)) || any(neighborCoord >= gridDim)) {
+                        continue;
+                    }
+
+                    var b = boundaryCellHead[simCellIndex(params, neighborCoord)];
+                    while (b >= 0) {
+                        let posB = boundaryPositions[u32(b)].xyz;
+                        let rib = posI - posB;
+                        let r = length(rib);
+                        if (r > 1e-6) {
+                            let dWdr = cubicSplineDerivative(r, params.smoothingLength);
+                            let gradW = (dWdr / r) * rib;
+                            let massB = params.restDensity * boundaryPositions[u32(b)].w;
+                            let coeff = pressureI / (densityI * densityI);
+                            accel = accel - massB * coeff * gradW;
+                        }
+                        b = boundaryNext[u32(b)];
+                    }
                 }
             }
         }

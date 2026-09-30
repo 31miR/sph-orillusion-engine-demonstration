@@ -11,6 +11,9 @@ import { FluidPressureForceCompute } from "./shaders/simulation/FluidPressureFor
 import { FluidViscosityForceCompute } from "./shaders/simulation/FluidViscosityForceCompute";
 import { FluidMaxVelocityClear } from "./shaders/simulation/FluidMaxVelocityClear";
 import { FluidMaxVelocityReduce } from "./shaders/simulation/FluidMaxVelocityReduce";
+import { FluidBoundaryVolumeCompute } from "./shaders/simulation/FluidBoundaryVolumeCompute";
+import { FluidBoundaryGridBuild } from "./shaders/simulation/FluidBoundaryGridBuild";
+import { FluidBoundaryWalls } from "./FluidBoundaryWalls";
 import type { FluidBounds } from "./FluidBounds";
 
 const WORKGROUP_SIZE = 64;
@@ -52,6 +55,9 @@ export class FluidSimulator {
     private readonly pressureForceShader: ComputeShader;
     private readonly viscosityForceShader: ComputeShader;
     private readonly integrateShader: ComputeShader;
+    private readonly boundaryVolumeShader: ComputeShader;
+    private readonly boundaryGridBuildShader: ComputeShader;
+    private boundaryVolumeInitialized = false;
 
     constructor(particleBuffer: StorageGPUBuffer, particleCount: number, options: FluidSimulatorOptions) {
         const {
@@ -89,6 +95,8 @@ export class FluidSimulator {
         ShaderLib.register("FluidViscosityForceCompute", FluidViscosityForceCompute);
         ShaderLib.register("FluidMaxVelocityClear", FluidMaxVelocityClear);
         ShaderLib.register("FluidMaxVelocityReduce", FluidMaxVelocityReduce);
+        ShaderLib.register("FluidBoundaryVolumeCompute", FluidBoundaryVolumeCompute);
+        ShaderLib.register("FluidBoundaryGridBuild", FluidBoundaryGridBuild);
 
         // SimParams: 19 plain f32 fields, 76 bytes — see FluidSimParams.wgsl.
         this.params = new UniformGPUBuffer(76);
@@ -124,6 +132,17 @@ export class FluidSimulator {
         // FluidMaxVelocityReduce.wgsl / FluidMaxVelocityClear.wgsl.
         const maxVelocityBuffer = new StorageGPUBuffer(1);
 
+        // Static Akinci-style wall boundary particles (STAR report
+        // Sec. 4) — fixes particle deficiency at the solid boundary.
+        const boundaryWalls = new FluidBoundaryWalls(bounds, smoothingLength);
+
+        // Grid over the (static) boundary particles, sharing the fluid
+        // grid's cell size/dimensions — built once (see
+        // FluidBoundaryGridBuild.wgsl), not cleared/rebuilt per frame.
+        // Pre-filled with -1 so no separate clear dispatch is needed.
+        const boundaryCellHeadBuffer = new StorageGPUBuffer(cellCount, 0, new Int32Array(cellCount).fill(-1));
+        const boundaryNextBuffer = new StorageGPUBuffer(boundaryWalls.count);
+
         // Separate files, not shared entry points: the clear shader
         // doesn't touch "particles" at all, and the engine's module-level
         // binding check requires it either way, breaking one or the other.
@@ -153,6 +172,9 @@ export class FluidSimulator {
         this.densityShader.setStorageBuffer("particles", particleBuffer);
         this.densityShader.setStorageBuffer("cellHead", cellHeadBuffer);
         this.densityShader.setStorageBuffer("particleNext", particleNextBuffer);
+        this.densityShader.setStorageBuffer("boundaryPositions", boundaryWalls.positionBuffer);
+        this.densityShader.setStorageBuffer("boundaryCellHead", boundaryCellHeadBuffer);
+        this.densityShader.setStorageBuffer("boundaryNext", boundaryNextBuffer);
         this.densityShader.workerSizeX = workgroupsFor(particleCount);
 
         this.pressureShader = new ComputeShader(FluidPressureCompute);
@@ -166,6 +188,9 @@ export class FluidSimulator {
         this.pressureForceShader.setStorageBuffer("cellHead", cellHeadBuffer);
         this.pressureForceShader.setStorageBuffer("particleNext", particleNextBuffer);
         this.pressureForceShader.setStorageBuffer("maxVelocityBits", maxVelocityBuffer);
+        this.pressureForceShader.setStorageBuffer("boundaryPositions", boundaryWalls.positionBuffer);
+        this.pressureForceShader.setStorageBuffer("boundaryCellHead", boundaryCellHeadBuffer);
+        this.pressureForceShader.setStorageBuffer("boundaryNext", boundaryNextBuffer);
         this.pressureForceShader.workerSizeX = workgroupsFor(particleCount);
 
         this.viscosityForceShader = new ComputeShader(FluidViscosityForceCompute);
@@ -181,6 +206,27 @@ export class FluidSimulator {
         this.integrateShader.setStorageBuffer("particles", particleBuffer);
         this.integrateShader.setStorageBuffer("maxVelocityBits", maxVelocityBuffer);
         this.integrateShader.workerSizeX = workgroupsFor(particleCount);
+
+        // One-time setup (see compute()'s boundaryVolumeInitialized
+        // guard): the walls never move, so each boundary particle's
+        // Akinci volume never changes after construction.
+        const boundaryVolumeParams = new UniformGPUBuffer(4);
+        boundaryVolumeParams.setFloat("smoothingLength", smoothingLength);
+        boundaryVolumeParams.apply();
+        this.boundaryVolumeShader = new ComputeShader(FluidBoundaryVolumeCompute);
+        this.boundaryVolumeShader.setStorageBuffer("boundaryPositions", boundaryWalls.positionBuffer);
+        this.boundaryVolumeShader.setUniformBuffer("params", boundaryVolumeParams);
+        this.boundaryVolumeShader.workerSizeX = workgroupsFor(boundaryWalls.count);
+
+        // Also one-time: builds the static grid over boundaryPositions
+        // that densityShader/pressureForceShader query instead of
+        // scanning every boundary particle.
+        this.boundaryGridBuildShader = new ComputeShader(FluidBoundaryGridBuild);
+        this.boundaryGridBuildShader.setUniformBuffer("params", this.params);
+        this.boundaryGridBuildShader.setStorageBuffer("boundaryPositions", boundaryWalls.positionBuffer);
+        this.boundaryGridBuildShader.setStorageBuffer("boundaryCellHead", boundaryCellHeadBuffer);
+        this.boundaryGridBuildShader.setStorageBuffer("boundaryNext", boundaryNextBuffer);
+        this.boundaryGridBuildShader.workerSizeX = workgroupsFor(boundaryWalls.count);
     }
 
     // Live-tunable parameters for the debug GUI; compute() re-applies
@@ -227,7 +273,7 @@ export class FluidSimulator {
         // pressure; pressure before pressure-force (needs every
         // particle's value, not just its own); both forces before
         // integrate. Matches Algorithm 1's order in the STAR report.
-        view.engine3D.context3D.gpuContext.computeCommand(command, [
+        const shaders = [
             this.maxVelocityClearShader,
             this.maxVelocityReduceShader,
             this.gridClearShader,
@@ -237,6 +283,13 @@ export class FluidSimulator {
             this.pressureForceShader,
             this.viscosityForceShader,
             this.integrateShader,
-        ]);
+        ];
+
+        if (!this.boundaryVolumeInitialized) {
+            shaders.unshift(this.boundaryVolumeShader, this.boundaryGridBuildShader);
+            this.boundaryVolumeInitialized = true;
+        }
+
+        view.engine3D.context3D.gpuContext.computeCommand(command, shaders);
     }
 }
