@@ -14,8 +14,10 @@ var depthTex: texture_2d<f32>;
 @group(0) @binding(1)
 var outTex: texture_storage_2d<r32float, write>;
 
-const KERNEL_RADIUS: i32 = 12;
-const SIGMA_SPACE: f32 = 6.0;
+// In pixels of the reduced-resolution texture (FLUID_RENDER_SCALE in
+// FluidDepthPass.ts) — half of the full-resolution 12 / 6.0.
+const KERNEL_RADIUS: i32 = 6;
+const SIGMA_SPACE: f32 = 3.0;
 // Depth is view-space distance-to-camera in world units (see
 // FluidDepthCaptureShader.wgsl). Deliberately a fixed constant, not
 // derived from particle size: a fixed absolute width becomes

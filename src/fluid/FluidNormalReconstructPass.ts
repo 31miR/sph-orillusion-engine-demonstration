@@ -2,6 +2,7 @@ import { ComputeShader, RenderGraphPass, RenderTexture, UniformGPUBuffer } from 
 import type { RenderGraphBuilder, RenderGraphPassContext } from "@orillusion/core";
 import { FluidNormalReconstruct } from "./shaders/rendering/FluidNormalReconstruct";
 import { FluidDepthSmoothPass } from "./FluidDepthSmoothPass";
+import { fluidRenderSize } from "./FluidDepthPass";
 
 const WORKGROUP_SIZE = 8;
 
@@ -31,11 +32,10 @@ export class FluidNormalReconstructPass extends RenderGraphPass {
         const ctx = b.context3D;
         // Sized from presentationSize, not window.innerWidth/Height —
         // see FluidDepthSmoothPass.ts (HiDPI).
-        const presentationWidth = ctx.presentationSize[0]!;
-        const presentationHeight = ctx.presentationSize[1]!;
+        const [width, height] = fluidRenderSize(ctx.presentationSize);
         this.outputTexture = new RenderTexture(
-            presentationWidth,
-            presentationHeight,
+            width,
+            height,
             "rgba16float",
             false,
             GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,

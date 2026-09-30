@@ -3,6 +3,19 @@ import type { RenderGraphBuilder, RenderGraphPassContext } from "@orillusion/cor
 
 export const FLUID_DEPTH_RT = "FluidDepthRT";
 
+// The depth capture, smoothing and normal passes all run at this
+// fraction of the canvas resolution — the blur is fill-rate bound, and
+// van der Laan et al. 2009 (Sec. 3.5.1) likewise smooth at half or
+// quarter resolution.
+export const FLUID_RENDER_SCALE = 0.5;
+
+export function fluidRenderSize(presentationSize: number[]): [number, number] {
+    return [
+        Math.max(1, Math.floor(presentationSize[0]! * FLUID_RENDER_SCALE)),
+        Math.max(1, Math.floor(presentationSize[1]! * FLUID_RENDER_SCALE)),
+    ];
+}
+
 // Step 1 of the screen-space fluid renderer (van der Laan, Green,
 // Sainz 2009, "Screen Space Fluid Rendering with Curvature Flow";
 // STAR report Sec 7.3). Renders only the depth-capture echo (a
@@ -30,8 +43,12 @@ export class FluidDepthPass extends RenderGraphPass {
     }
 
     setup(b: RenderGraphBuilder): void {
+        const [width, height] = fluidRenderSize(b.context3D.presentationSize);
         this.target = b.createRenderTarget(FLUID_DEPTH_RT, {
             label: FLUID_DEPTH_RT,
+            width,
+            height,
+            customSize: true,
             colors: [
                 { name: "FluidDepthCapturedColor", format: "rgba16float", storeOp: "store" },
                 { name: "FluidDepthDiscardColor1", format: "rgba32float", storeOp: "discard" },

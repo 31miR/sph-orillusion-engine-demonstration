@@ -1,7 +1,7 @@
 import { ComputeShader, RenderGraphPass, RenderTexture } from "@orillusion/core";
 import type { RenderGraphBuilder, RenderGraphPassContext } from "@orillusion/core";
 import { FluidDepthBlur } from "./shaders/rendering/FluidDepthBlur";
-import { FluidDepthPass } from "./FluidDepthPass";
+import { FluidDepthPass, fluidRenderSize } from "./FluidDepthPass";
 
 const WORKGROUP_SIZE = 8;
 
@@ -51,11 +51,10 @@ export class FluidDepthSmoothPass extends RenderGraphPass {
         // the real canvas resolution is clientWidth * devicePixelRatio,
         // which only matches window.innerWidth when devicePixelRatio is
         // 1 (false on HiDPI displays).
-        const presentationWidth = ctx.presentationSize[0]!;
-        const presentationHeight = ctx.presentationSize[1]!;
+        const [width, height] = fluidRenderSize(ctx.presentationSize);
         const texture = new RenderTexture(
-            presentationWidth,
-            presentationHeight,
+            width,
+            height,
             "r32float",
             false,
             GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_SRC | GPUTextureUsage.COPY_DST,
